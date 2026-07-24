@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const SIGN_MESSAGE = "0run key derivation v1 — sign to unlock your encrypted running data";
+
 export const PersonalitySchema = z.enum(["pacer", "coach", "drill_sergeant"]);
 export type Personality = z.infer<typeof PersonalitySchema>;
 
