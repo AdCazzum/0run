@@ -15,7 +15,9 @@ Deliverable del bando 0G (testuali): proof di inferenza su 0G Compute, link al m
 
 ## 2. Funzionalità MVP
 
-Sette funzionalità, un solo percorso demo che tocca ogni deliverable:
+Otto funzionalità, un solo percorso demo che tocca ogni deliverable:
+
+0. **Sito pubblico** — landing page public-facing su `/` che presenta il prodotto (hero editoriale, manifesto, come funziona, stack 0G, CTA verso login): è l'ingresso a tutto e la vetrina del design system. L'app autenticata vive sotto `/dashboard`.
 
 1. **Login senza frizione** — email via Privy, embedded wallet auto-creato su 0G Galileo (`defineChain`, chainId 16602). Un funder backend accredita gas al primo accesso (niente gas sponsorship 4337: non esiste infra su 0G). Zero seed phrase.
 2. **Mint del coach (una tantum)** — l'utente sceglie nome e **personalità di base** del coach: **Pacer** (ti accompagna, rinforzo positivo), **Coach** (equilibrato, dati alla mano), **Drill Sergeant** (nessuno sconto). La personalità viene scritta nella memoria iniziale e modifica il system prompt di ogni inferenza. Il backend cifra la memoria iniziale, la carica su 0G Storage, minta l'AgentNFT con il `dataHash` e mostra il link al mint su chainscan-galileo. In demo: stesso GPX su due personalità diverse → due report con toni opposti = la memoria determina il comportamento dell'agente.

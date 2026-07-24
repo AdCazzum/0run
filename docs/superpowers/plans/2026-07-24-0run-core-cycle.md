@@ -2360,7 +2360,7 @@ export async function POST(req: Request) {
 }
 ```
 
-`apps/web/src/app/runs/[id]/page.tsx` — layout asimmetrico 12 colonne: mappa `md:col-span-5 md:col-start-1`, report `md:col-span-6 md:col-start-7` (7/5 spezzato, mai 50/50); sopra, `<PipelineSteps>` finché `status === "processing"`; sotto il report, `<Chat>`. `apps/web/src/app/page.tsx` — dashboard: hero editoriale ("Own your *Coach*"), lista corse come `<Card>` con overline data + stats, CTA upload.
+`apps/web/src/app/runs/[id]/page.tsx` — layout asimmetrico 12 colonne: mappa `md:col-span-5 md:col-start-1`, report `md:col-span-6 md:col-start-7` (7/5 spezzato, mai 50/50); sopra, `<PipelineSteps>` finché `status === "processing"`; sotto il report, `<Chat>`. `apps/web/src/app/dashboard/page.tsx` — dashboard autenticata: lista corse come `<Card>` con overline data + stats, card del coach, CTA upload. (La route `/` pubblica è il Task 17.)
 
 - [ ] **Step 4: Run to verify pass** — `npx vitest run -w web src/components/run` → PASS (2 test). Verifica manuale end-to-end su Galileo reale: upload GPX vero → 5 step verdi → report con confronto → chat risponde in personalità.
 
@@ -2449,8 +2449,148 @@ git add scripts README.md && git commit -m "feat: demo seed, core smoke test, RE
 
 ---
 
+### Task 17: Sito pubblico (landing page)
+
+**Files:**
+- Create: `apps/web/src/app/page.tsx` (landing pubblica), `apps/web/src/components/landing/hero.tsx`, `apps/web/src/components/landing/manifesto.tsx`, `apps/web/src/components/landing/how-it-works.tsx`, `apps/web/src/components/landing/stack-section.tsx`, `apps/web/src/components/landing/site-footer.tsx`
+- Test: `apps/web/src/components/landing/landing.test.tsx`
+
+**Interfaces:**
+- Consumes: `Button`, `Card`, `PageChrome` (Task 12); Privy `useLogin` (Task 11).
+- Produces: `/` pubblica (nessuna auth richiesta) che presenta il prodotto e porta al login; dopo il login redirect a `/dashboard`. È la vetrina public-facing del prodotto E del design system: i giudici la vedono prima di ogni altra cosa.
+
+- [ ] **Step 1: Failing render test**
+
+`apps/web/src/components/landing/landing.test.tsx`:
+
+```tsx
+// @vitest-environment jsdom
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("@privy-io/react-auth", () => ({ usePrivy: () => ({ authenticated: false }), useLogin: () => ({ login: vi.fn() }) }));
+import { Hero } from "./hero";
+import { HowItWorks } from "./how-it-works";
+
+describe("landing", () => {
+  it("hero: headline serif con parola italic orange, overline con linea decorativa, CTA", () => {
+    render(<Hero />);
+    const em = screen.getByText("Coach.");
+    expect(em.className).toContain("italic");
+    expect(em.className).toContain("text-orange");
+    expect(screen.getByTestId("hero-overline-line").className).toContain("h-px");
+    expect(screen.getByRole("button", { name: /start running/i })).toBeTruthy();
+  });
+  it("how-it-works: 3 step numerati con serif italic", () => {
+    render(<HowItWorks />);
+    expect(screen.getByText("01")).toBeTruthy();
+    expect(screen.getByText("02")).toBeTruthy();
+    expect(screen.getByText("03")).toBeTruthy();
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify fail** — `npx vitest run -w web src/components/landing` → FAIL.
+
+- [ ] **Step 3: Implementation**
+
+`apps/web/src/components/landing/hero.tsx`:
+
+```tsx
+"use client";
+import { useLogin, usePrivy } from "@privy-io/react-auth";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+
+export function Hero() {
+  const { authenticated } = usePrivy();
+  const router = useRouter();
+  const { login } = useLogin({ onComplete: () => router.push("/dashboard") });
+  return (
+    <section className="relative mx-auto grid min-h-[88vh] max-w-[1600px] grid-cols-12 items-end px-8 pb-24 pt-32 md:px-16">
+      <span aria-hidden className="absolute right-8 top-32 hidden font-sans text-[10px] uppercase tracking-[0.3em] text-ocean lg:block" style={{ writingMode: "vertical-rl" }}>
+        0run / Vol. 01 — Lisboa
+      </span>
+      <div className="col-span-12 md:col-span-9 md:col-start-2">
+        <div className="mb-8 flex items-center gap-4">
+          <span data-testid="hero-overline-line" aria-hidden className="h-px w-12 bg-navy" />
+          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">The AI running coach you own</span>
+        </div>
+        <h1 className="font-serif text-6xl leading-[0.9] text-navy md:text-9xl">
+          Own your<br /><em className="italic text-orange">Coach.</em><br />Own your runs.
+        </h1>
+        <p className="mt-10 max-w-md font-sans text-lg leading-relaxed text-navy">
+          Your runs, encrypted on decentralized storage. Your coach, an intelligent NFT whose memory grows with every kilometre. Private by design, verifiable by default.
+        </p>
+        <div className="mt-12 flex flex-wrap gap-6">
+          <Button variant="primary" onClick={() => (authenticated ? router.push("/dashboard") : login())}>Start running</Button>
+          <Button variant="link" onClick={() => document.getElementById("how")?.scrollIntoView({ behavior: "smooth" })}>How it works</Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+```
+
+`apps/web/src/components/landing/manifesto.tsx` — sezione `border-t border-navy/15 py-24 md:py-32`, griglia 12 con testo `md:col-span-6 md:col-start-6`: paragrafo con drop cap (`first-letter:` come ReportView) che racconta il problema (Strava possiede i tuoi dati) e la tesi (ownership). `apps/web/src/components/landing/how-it-works.tsx`:
+
+```tsx
+const STEPS = [
+  { n: "01", title: "Upload your run", body: "Drop a GPX. It is encrypted client-side and stored on 0G decentralized storage — only your wallet can unlock it." },
+  { n: "02", title: "Meet your coach", body: "An AI coach minted as an intelligent NFT. Analysis runs in a trusted execution environment: nobody reads your data. Not even us." },
+  { n: "03", title: "Watch it grow", body: "Every run feeds its encrypted memory, hashed on-chain. Switch apps, keep the coach. One day, lend it." },
+];
+
+export function HowItWorks() {
+  return (
+    <section id="how" className="border-t border-navy/15">
+      <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-12 px-8 py-24 md:grid-cols-3 md:px-16 md:py-32">
+        {STEPS.map((s) => (
+          <div key={s.n} className="border-t border-navy p-8 transition-colors duration-700 hover:bg-peach/20 md:p-12">
+            <span className="font-serif text-2xl italic text-orange">{s.n}</span>
+            <h3 className="mt-6 font-serif text-3xl text-navy">{s.title}</h3>
+            <p className="mt-4 font-sans text-base leading-relaxed text-navy">{s.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+```
+
+`apps/web/src/components/landing/stack-section.tsx` — sezione scura invertita (`bg-navy text-cream py-24 md:py-32`): overline "Built on 0G", headline con italic in orange ("Verifiable *by default*"), 4 voci (Storage / Compute TEE / Agentic ID / Chain) come colonne con `border-t border-cream/20` e testo muted `text-peach/80`. `apps/web/src/components/landing/site-footer.tsx` — footer `border-t border-navy`: wordmark serif "0run", micro-text `text-[10px] tracking-[0.25em] uppercase` con link (GitHub, ETHGlobal Lisbon 2026), linea decorativa. `apps/web/src/app/page.tsx`:
+
+```tsx
+import { Hero } from "@/components/landing/hero";
+import { Manifesto } from "@/components/landing/manifesto";
+import { HowItWorks } from "@/components/landing/how-it-works";
+import { StackSection } from "@/components/landing/stack-section";
+import { SiteFooter } from "@/components/landing/site-footer";
+
+export default function Home() {
+  return (
+    <main>
+      <Hero />
+      <Manifesto />
+      <HowItWorks />
+      <StackSection />
+      <SiteFooter />
+    </main>
+  );
+}
+```
+
+- [ ] **Step 4: Run to verify pass** — `npx vitest run -w web src/components/landing` → PASS (2 test). Verifica visiva: `/` senza login mostra la landing completa; "Start running" apre il login Privy e atterra su `/dashboard`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/src && git commit -m "feat(web): public landing page — editorial hero, manifesto, how-it-works, 0G stack"
+```
+
+---
+
 ## Self-Review (eseguita)
 
-1. **Spec coverage (Piano A):** login/frizione ✓ (T11) · mint+personalità ✓ (T3, T13) · upload+pipeline stati ✓ (T14) · report che cita storico ✓ (T10 prompt, T15) · chat ✓ (T15) · memoria 2 strati+chiavi ✓ (T5, T10) · storage cifrato+receipt ✓ (T7) · inferenza dual-path+TEE ✓ (T8) · contratti+deploy ✓ (T9) · design system ✓ (T12, applicato in T13-15) · spike ✓ (T2) · seed+smoke ✓ (T16). Eventi/World/ENS/ERC-8004/letting/deploy Hetzner = Piani B e C, come da decomposizione.
+1. **Spec coverage (Piano A):** sito pubblico ✓ (T17) · login/frizione ✓ (T11) · mint+personalità ✓ (T3, T13) · upload+pipeline stati ✓ (T14) · report che cita storico ✓ (T10 prompt, T15) · chat ✓ (T15) · memoria 2 strati+chiavi ✓ (T5, T10) · storage cifrato+receipt ✓ (T7) · inferenza dual-path+TEE ✓ (T8) · contratti+deploy ✓ (T9) · design system ✓ (T12, applicato in T13-15, 17) · spike ✓ (T2) · seed+smoke ✓ (T16). Eventi/World/ENS/ERC-8004/letting/deploy Hetzner = Piani B e C, come da decomposizione.
 2. **Placeholder scan:** nessun TBD/TODO; le pagine descritte senza codice completo (mint/upload/dashboard) specificano classi, layout e comportamento esatti dal design system — accettato perché il markup è vincolato dai componenti di T12 e dai test.
 3. **Type consistency:** `StorageReceipt`/`uploadEncrypted`/`downloadDecrypted` coerenti T7↔T10↔T14 · `ChatMsg`/`CoachCompletion` T8↔T10↔T15 · `RunStep`/`StepState` T6↔T14↔T15 · firme contratti T9↔T13 (`mint((string,bytes32)[],address)`, `update(uint256,bytes32,bytes32)`) · `SIGN_MESSAGE`/HKDF identici server (T5) e client (T13: stesso salt `0run-v1`, info `user-data-key`, SHA-256, 32B).
