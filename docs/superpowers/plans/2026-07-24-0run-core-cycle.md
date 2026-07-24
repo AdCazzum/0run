@@ -924,7 +924,7 @@ git add apps/web/src/lib/zerog && git commit -m "feat(web): 0G storage service w
 - Test: `apps/web/src/lib/inference/inference.test.ts`
 
 **Interfaces:**
-- Produces: `coachComplete(messages: ChatMsg[]): Promise<CoachCompletion>` con `type ChatMsg = { role: "system"|"user"|"assistant"; content: string }` e `type CoachCompletion = { text: string; verified: boolean | null; model: string; path: "router"|"direct" }` · `completeJson<T>(schema: ZodType<T>, messages: ChatMsg[], retries?: number): Promise<{ value: T; meta: CoachCompletion }>` — ritenta rimandando l'errore di validazione al modello. Fallback: primario → fallback → (se `DIRECT_ENABLED=1`) direct. `verified` è `null` sul router (attestazione non per-risposta), boolean sul direct (da `processResponse`).
+- Produces: `coachComplete(messages: ChatMsg[]): Promise<CoachCompletion>` con `type ChatMsg = { role: "system"|"user"|"assistant"; content: string }` e `type CoachCompletion = { text: string; verified: boolean | null; model: string; path: "router"|"direct" }` · `completeJson<T>(schema: ZodType<T>, messages: ChatMsg[], retries?: number): Promise<{ value: T; meta: CoachCompletion }>` — ritenta rimandando l'errore di validazione al modello. Fallback: primario → fallback → (se `DIRECT_ENABLED=1`) direct. `verified` è `boolean | null` su entrambi i path: `true/false` = esito reale di `processResponse` (solo direct), `null` = attestazione non disponibile (router, oppure `processResponse` fallito — loggato con warn).
 
 - [ ] **Step 1: Failing test (fetch mockato)**
 
