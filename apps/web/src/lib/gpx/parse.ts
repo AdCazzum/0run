@@ -41,14 +41,27 @@ export function parseGpx(xml: string): { stats: RunStats; polyline: [number, num
   let splitStartT = pts[0].time.getTime(), splitDist = 0;
   for (let i = 1; i < pts.length; i++) {
     const d = haversineM(pts[i - 1], pts[i]);
-    distM += d; splitDist += d;
+    distM += d;
     const eleDelta = (pts[i].ele ?? 0) - (pts[i - 1].ele ?? 0);
     if (pts[i].ele != null && pts[i - 1].ele != null && eleDelta > 0) gain += eleDelta;
-    while (splitDist >= 1000) {
-      const t = pts[i].time.getTime();
-      splits.push(Math.round((t - splitStartT) / 1000 / (splitDist / 1000)));
-      splitStartT = t; splitDist -= 1000;
+
+    // Consume this segment's distance/time, closing every 1km boundary it crosses by
+    // linearly interpolating the timestamp at which the boundary is reached (assumes
+    // constant velocity within the segment). A single long segment can close multiple
+    // splits; the leftover (<1km) carries into splitDist for the next segment.
+    const segStartT = pts[i - 1].time.getTime();
+    const dt = pts[i].time.getTime() - segStartT;
+    let consumedD = 0;
+    while (splitDist + (d - consumedD) >= 1000) {
+      const neededD = 1000 - splitDist;
+      consumedD += neededD;
+      const frac = d > 0 ? consumedD / d : 1;
+      const boundaryT = segStartT + frac * dt;
+      splits.push(Math.round((boundaryT - splitStartT) / 1000));
+      splitStartT = boundaryT;
+      splitDist = 0;
     }
+    splitDist += d - consumedD;
   }
   const durationSec = Math.round((pts.at(-1)!.time.getTime() - pts[0].time.getTime()) / 1000);
   if (durationSec <= 0 || distM <= 0) throw new GpxError("Durata o distanza nulla");
