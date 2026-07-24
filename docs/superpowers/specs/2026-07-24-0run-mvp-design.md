@@ -31,6 +31,10 @@ Sette funzionalità, un solo percorso demo che tocca ogni deliverable:
 
 ## 3. Architettura
 
+### UI
+
+Tutta la UI segue il design system **Luxury/Editorial** definito in [`2026-07-24-0run-design-system.md`](./2026-07-24-0run-design-system.md) (vincolante: palette 0run a 5 colori — cream/navy/peach/ocean/orange — tipografia Playfair+Inter, radius 0, motion cinematografico, grayscale sulle immagini, griglia asimmetrica).
+
 ### Struttura repo (monorepo)
 
 ```
