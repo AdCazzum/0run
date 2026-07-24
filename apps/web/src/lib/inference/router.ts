@@ -16,7 +16,7 @@ export async function routerComplete(messages: ChatMsg[]): Promise<CoachCompleti
       const text = data.choices?.[0]?.message?.content;
       if (typeof text === "string" && text.length) return { text, verified: null, model, path: "router" };
       lastErr = "risposta senza contenuto";
-    } else lastErr = `HTTP ${res.status}`;
+    } else lastErr = (res as any)._e ?? `HTTP ${res.status}`;
   }
   throw new Error(`router: tutti i modelli falliti (${lastErr})`);
 }

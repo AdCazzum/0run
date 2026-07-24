@@ -49,4 +49,11 @@ describe("inference", () => {
     const { coachComplete } = await import("./index");
     await expect(coachComplete([{ role: "user", content: "hi" }])).rejects.toThrow();
   });
+
+  it("router: errore di rete (fetch rejects) → dettaglio nel messaggio finale, non 'HTTP 0'", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    vi.resetModules();
+    const { coachComplete } = await import("./index");
+    await expect(coachComplete([{ role: "user", content: "hi" }])).rejects.toThrow(/ECONNREFUSED/);
+  });
 });

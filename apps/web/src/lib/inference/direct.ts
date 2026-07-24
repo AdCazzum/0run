@@ -23,8 +23,19 @@ export async function directComplete(messages: ChatMsg[]): Promise<CoachCompleti
     try {
       await broker.inference.acknowledgeProviderSigner(provider).catch(() => {}); // idempotente
       const { endpoint, model } = await broker.inference.getServiceMetadata(provider);
-      const content = messages.map((m) => m.content).join("\n");
-      const headers = await broker.inference.getRequestHeaders(provider, content);
+      // SSRF guard: `endpoint` is on-chain data from an allowlisted provider (DIRECT_PROVIDERS),
+      // but the URL itself is attacker-influenced if that provider misbehaves — require https,
+      // except http to localhost/127.0.0.1 for local testing.
+      const endpointUrl = new URL(endpoint);
+      const isLocalHost = endpointUrl.hostname === "localhost" || endpointUrl.hostname === "127.0.0.1";
+      if (endpointUrl.protocol !== "https:" && !(endpointUrl.protocol === "http:" && isLocalHost)) {
+        throw new Error(`direct: endpoint non sicuro per provider ${provider}: ${endpoint}`);
+      }
+      // The SDK's `content` param is deprecated/unused for sync completions — Authorization is
+      // an ephemeral session token, not derived from content (0g-compute-ts-sdk
+      // lib.commonjs/inference/broker/request.js:51-61 ignores `_content`); omit it rather than
+      // pass content that doesn't match the POST body and isn't actually signed over anyway.
+      const headers = await broker.inference.getRequestHeaders(provider);
       const res = await fetch(`${endpoint}/chat/completions`, {
         method: "POST",
         headers: { "content-type": "application/json", ...headers },
@@ -37,7 +48,12 @@ export async function directComplete(messages: ChatMsg[]): Promise<CoachCompleti
       if (typeof text !== "string" || !text.length) { lastErr = "vuoto"; continue; }
       const chatID = res.headers.get("ZG-Res-Key") ?? data.id;
       let verified: boolean | null = null;
-      try { verified = Boolean(await broker.inference.processResponse(provider, chatID)); } catch { verified = null; }
+      try { verified = Boolean(await broker.inference.processResponse(provider, chatID)); }
+      catch (e) {
+        verified = null;
+        // Fail-open on verification: keep serving the completion, but make it observable.
+        console.warn(`direct: verifica attestazione non disponibile per provider ${provider}: ${String(e)}`);
+      }
       return { text, verified, model, path: "direct" };
     } catch (e) { lastErr = String(e); }
   }

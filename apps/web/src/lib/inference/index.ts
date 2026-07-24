@@ -10,8 +10,13 @@ export async function coachComplete(messages: ChatMsg[]): Promise<CoachCompletio
   try {
     return await routerComplete(messages);
   } catch (routerErr) {
-    if (process.env.DIRECT_ENABLED === "1") return directComplete(messages);
-    throw routerErr;
+    if (process.env.DIRECT_ENABLED !== "1") throw routerErr;
+    try {
+      return await directComplete(messages);
+    } catch (directErr) {
+      // Both paths failed: surface both causes, not just the last one.
+      throw new Error(`router=${routerErr} · direct=${directErr}`);
+    }
   }
 }
 
