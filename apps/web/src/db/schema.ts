@@ -8,6 +8,7 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   privyDid: text("privy_did").notNull().unique(),
   wallet: text("wallet").notNull(),
+  fundedCount: integer("funded_count").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
