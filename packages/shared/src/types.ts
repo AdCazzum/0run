@@ -42,7 +42,7 @@ export type StorageReceipt =
   | { ok: true; rootHash: string; txHash: string }
   | { ok: false; error: string };
 
-const STYLE: Record<Personality, string> = {
+export const PERSONALITY_STYLE: Record<Personality, string> = {
   pacer: "Supportive companion: celebrates effort, gentle suggestions, warm tone.",
   coach: "Balanced professional: data-driven, honest, encouraging but precise.",
   drill_sergeant: "No excuses: blunt verdicts, high standards, direct commands.",
@@ -52,6 +52,6 @@ export function initialMemory(name: string, personality: Personality): { memory:
   PersonalitySchema.parse(personality);
   return {
     memory: { version: 1, coach: { name, personality }, privateLayer: { runs: [] } },
-    profile: { version: 1, name, personality, totals: { runs: 0, km: 0 }, paceTrend: [], styleNotes: STYLE[personality] },
+    profile: { version: 1, name, personality, totals: { runs: 0, km: 0 }, paceTrend: [], styleNotes: PERSONALITY_STYLE[personality] },
   };
 }
