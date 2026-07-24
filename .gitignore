@@ -1,1 +1,4 @@
 .claude/settings.local.json
+.superpowers/
+node_modules/
+.env

@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: orun
+      POSTGRES_PASSWORD: orun
+      POSTGRES_DB: orun
+    ports: ["5432:5432"]
+    volumes: [dbdata:/var/lib/postgresql/data]
+volumes:
+  dbdata:
