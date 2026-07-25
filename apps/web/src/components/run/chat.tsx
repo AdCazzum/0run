@@ -71,13 +71,13 @@ export function Chat({ runId }: { runId?: number }) {
                 // conversation between two agents, shown, not summarized.
                 <div className="rounded-2xl border border-dashed border-ocean/60 p-4">
                   <p className="mb-3 font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
-                    consulto tra coach ·{" "}
+                    coach-to-coach consult ·{" "}
                     {turn.consult.toTokenId ? (
                       <a className="underline" href={`/coach/${turn.consult.toTokenId}`}>{turn.consult.to}</a>
                     ) : (
                       turn.consult.to
                     )}{" "}
-                    · verificato via ENS
+                    · verified via ENS
                   </p>
                   <p className="mb-2 font-sans text-sm italic text-navy/80">→ {turn.consult.question}</p>
                   <div className="flex items-start gap-3">
@@ -121,9 +121,9 @@ export function Chat({ runId }: { runId?: number }) {
       <button
         type="button"
         className="mt-3 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean underline decoration-dotted"
-        onClick={() => setDraft((d) => (d ? `${d} ` : "") + "Chiedi anche un secondo parere a un altro coach.")}
+        onClick={() => setDraft((d) => (d ? `${d} ` : "") + "Also ask another coach for a second opinion.")}
       >
-        + chiedi un secondo parere a un altro coach
+        + ask another coach for a second opinion
       </button>
     </section>
   );
