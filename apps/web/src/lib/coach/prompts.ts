@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { CoachProfile, RunStats, RunSummary } from "@0run/shared";
+import type { CoachProfile, DailyHealth, HealthSnapshot, RunStats, RunSummary } from "@0run/shared";
 import type { ChatMsg } from "../inference";
 
 export const ReportSchema = z.object({
@@ -25,6 +25,81 @@ export function systemPrompt(profile: CoachProfile): string {
   ].join("\n");
 }
 
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/** Signed percent delta of `value` vs `baseline`, rounded to a whole number (e.g. -18, +7). */
+function pctDelta(value: number, baseline: number): number | null {
+  if (baseline === 0) return null;
+  return Math.round(((value - baseline) / baseline) * 100);
+}
+
+function fmtSigned(n: number): string {
+  return n >= 0 ? `+${n}` : `${n}`;
+}
+
+/** Most recent day (scanning from the end) with a non-null value for `key`, if any. */
+function lastNonNull(days: DailyHealth[], key: "restingHr" | "hrvSdnnMs" | "sleepMin"): { date: string; value: number } | null {
+  for (let i = days.length - 1; i >= 0; i--) {
+    const v = days[i][key];
+    if (typeof v === "number") return { date: days[i].date, value: v };
+  }
+  return null;
+}
+
+/**
+ * Builds the "Recovery context" block from the athlete's own health data
+ * (docs/superpowers/specs/2026-07-25-health-data-spec.md §7). Only called
+ * when a snapshot is present — see buildReportMessages/buildChatMessages
+ * below, which pass `health` through structurally decrypted private-layer
+ * memory; it can never reach the letting/rented-coach path, which only ever
+ * has the public profile.
+ *
+ * Deltas are computed HERE, by the backend, not left for the model to do the
+ * arithmetic (docs/0g-reality-check.md: models on 0G Compute get this wrong)
+ * — the model is handed the final numbers and told to cite them.
+ *
+ * Guardrail wording is deliberately consistent with the "feelings" guardrail
+ * in systemPrompt() above: acknowledge, advise caution, suggest a
+ * professional — never diagnose, never prescribe treatment. Kept inside this
+ * conditional block (not systemPrompt) so a report/chat with no health data
+ * is byte-for-byte identical to before this feature existed, same convention
+ * as feelingsLine/scoreLine below.
+ */
+function buildRecoveryLines(health: HealthSnapshot): string[] {
+  const recentDays = health.days.slice(-5);
+  const dayLines = recentDays.map(
+    (d) => `${d.date}: sleep ${d.sleepMin ?? "n/a"} min, resting HR ${d.restingHr ?? "n/a"} bpm, HRV ${d.hrvSdnnMs ?? "n/a"} ms`,
+  );
+
+  const deltaParts: string[] = [];
+  const rhr = lastNonNull(health.days, "restingHr");
+  if (rhr && health.baselines.restingHr != null) {
+    const d = pctDelta(rhr.value, health.baselines.restingHr);
+    deltaParts.push(`resting HR (${rhr.date}) ${rhr.value} bpm vs baseline ${round1(health.baselines.restingHr)} bpm${d != null ? ` (${fmtSigned(d)}%)` : ""}`);
+  }
+  const hrv = lastNonNull(health.days, "hrvSdnnMs");
+  if (hrv && health.baselines.hrvSdnnMs != null) {
+    const d = pctDelta(hrv.value, health.baselines.hrvSdnnMs);
+    deltaParts.push(`HRV (${hrv.date}) ${hrv.value} ms vs baseline ${round1(health.baselines.hrvSdnnMs)} ms${d != null ? ` (${fmtSigned(d)}%)` : ""}`);
+  }
+  const sleep = lastNonNull(health.days, "sleepMin");
+  if (sleep && health.baselines.sleepMin != null) {
+    const d = pctDelta(sleep.value, health.baselines.sleepMin);
+    deltaParts.push(`sleep (${sleep.date}) ${sleep.value} min vs baseline ${round1(health.baselines.sleepMin)} min${d != null ? ` (${fmtSigned(d)}%)` : ""}`);
+  }
+
+  return [
+    `Recovery context (from the athlete's own health data — private, decrypted only for them, never part of their public coaching profile):`,
+    ...dayLines,
+    `Baselines over this window: resting HR ${health.baselines.restingHr != null ? round1(health.baselines.restingHr) : "n/a"} bpm, HRV ${health.baselines.hrvSdnnMs != null ? round1(health.baselines.hrvSdnnMs) : "n/a"} ms, sleep ${health.baselines.sleepMin != null ? round1(health.baselines.sleepMin) : "n/a"} min.`,
+    ...(deltaParts.length ? [`Deltas vs baseline (already computed for you — do not recalculate): ${deltaParts.join("; ")}.`] : []),
+    `Factor recovery into your verdict: short sleep or a depressed HRV favors an easier session or extra rest; good signals are a green light for quality work. Cite these numbers when relevant.`,
+    `If this recovery data or the athlete's own words suggest pain, injury, illness, or overtraining, acknowledge it and advise caution (e.g. easing off, resting, seeing a professional if it persists) — you are a running coach, not a doctor: never diagnose or give medical advice.`,
+  ];
+}
+
 /**
  * `score` is the attested effort score computed separately on the TEE-verified
  * 0G Compute "direct" path (see ../score.ts) — optional because that path can
@@ -41,6 +116,15 @@ export function buildReportMessages(
   // before this feature existed (same convention as `score` below).
   currentFeelings?: string | null,
   score?: { score: number; verified: boolean | null } | null,
+  // Decrypted private-layer health snapshot, if the athlete has uploaded one
+  // (see docs/superpowers/specs/2026-07-25-health-data-spec.md). Optional/
+  // nullable so a run report without health data is byte-for-byte the same
+  // prompt as before this feature existed — same convention as
+  // currentFeelings/score above. Structurally can never be sourced from the
+  // public CoachProfile (buildProfile never touches it), so this parameter
+  // can only ever be populated on the owner's own decrypt path, never on the
+  // letting/rented-coach path.
+  health?: HealthSnapshot | null,
 ): ChatMsg[] {
   const feelingsLine = currentFeelings
     ? [`How the athlete described how this run felt, in their own words: "${currentFeelings}"`]
@@ -50,6 +134,7 @@ export function buildReportMessages(
         score.verified === true ? "cryptographically TEE-verified" : score.verified === false ? "verification failed" : "TEE attestation unavailable"
       }): ${score.score}/5. Cite this figure in your analysis.`]
     : [];
+  const healthLines = health ? buildRecoveryLines(health) : [];
   return [
     { role: "system", content: systemPrompt(profile) },
     {
@@ -62,6 +147,7 @@ export function buildReportMessages(
         // so history already carries how past runs felt without extra code.
         `Summaries of previous runs (latest last):\n${JSON.stringify(recentRuns.slice(-5), null, 1)}`,
         ...scoreLine,
+        ...healthLines,
         `Respond ONLY with JSON: {"headline": string, "analysis": string, "comparison": string, "advice": string[]} (max 4 advice).`,
       ].join("\n\n"),
     },
@@ -108,12 +194,19 @@ export function buildScoreMessages(profile: CoachProfile, recentRuns: RunSummary
   ];
 }
 
-export function buildChatMessages(profile: CoachProfile, recentRuns: RunSummary[], history: ChatMsg[]): ChatMsg[] {
+export function buildChatMessages(
+  profile: CoachProfile, recentRuns: RunSummary[], history: ChatMsg[],
+  // Same contract as buildReportMessages' `health` param above: optional/
+  // nullable, decrypted private-layer only, byte-for-byte unchanged prompt
+  // when absent.
+  health?: HealthSnapshot | null,
+): ChatMsg[] {
   // recentRuns items are full RunSummary objects, so their `feelings` field
   // (if any) rides along in this JSON automatically — no separate plumbing
   // needed here for "how recent runs felt" to reach the model.
+  const healthBlock = health ? `\n${buildRecoveryLines(health).join("\n")}` : "";
   return [
-    { role: "system", content: `${systemPrompt(profile)}\nRecent runs:\n${JSON.stringify(recentRuns.slice(-5))}` },
+    { role: "system", content: `${systemPrompt(profile)}\nRecent runs:\n${JSON.stringify(recentRuns.slice(-5))}${healthBlock}` },
     ...history.slice(-12),
   ];
 }

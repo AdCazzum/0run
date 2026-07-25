@@ -22,7 +22,21 @@ vi.mock("@/lib/coach/pipeline", () => ({
   processRun: processRunMock,
 }));
 
-const state: { inserted: any[] } = { inserted: [] };
+const state: { inserted: any[]; runRows: any[]; coachRows: any[] } = { inserted: [], runRows: [], coachRows: [] };
+
+// `.where()` returns a plain array (not a Promise) with a synchronous
+// `.orderBy()` method attached, returning another plain array — this lets
+// the same mock serve BOTH real call shapes the route uses:
+// `await db.select().from(coaches).where(cond)` (awaiting the array itself,
+// which works fine — `await` on a non-promise resolves immediately) and
+// `db.select().from(runs).where(cond).orderBy(desc(...))` (synchronous
+// chaining before the surrounding Promise.all awaits it).
+function withOrderBy(rows: any[]) {
+  const arr: any = [...rows];
+  arr.orderBy = () => [...rows];
+  return arr;
+}
+
 vi.mock("@/db", async () => {
   const schema = await import("@/db/schema");
   return {
@@ -39,7 +53,11 @@ vi.mock("@/db", async () => {
           },
         }),
       }),
-      select: () => ({ from: () => ({ orderBy: async () => [], where: async () => [] }) }),
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => withOrderBy(table === schema.coaches ? state.coachRows : table === schema.runs ? state.runRows : []),
+        }),
+      }),
     },
   };
 });
@@ -59,6 +77,8 @@ function baseForm(extra?: Record<string, string>) {
 describe("POST /api/runs", () => {
   beforeEach(() => {
     state.inserted = [];
+    state.runRows = [];
+    state.coachRows = [];
     processRunMock.mockClear();
   });
 
@@ -98,5 +118,52 @@ describe("POST /api/runs", () => {
     const res = await POST(req(baseForm({ feelings: "a".repeat(1000) })));
     expect(res.status).toBe(200);
     expect(processRunMock.mock.calls[0][4]).toBe("a".repeat(1000));
+  });
+});
+
+function getReq() {
+  return new Request("http://x/api/runs", { headers: { authorization: "Bearer t" } });
+}
+
+describe("GET /api/runs", () => {
+  beforeEach(() => {
+    state.inserted = [];
+    state.runRows = [];
+    state.coachRows = [];
+  });
+
+  it("nessun coach → coach: null (una riga di sola reservation, tokenId vuoto, viene trattata come assente)", async () => {
+    state.coachRows = [{ id: 1, userId: 1, tokenId: "", name: "K", personality: "coach", mintTx: "", ensName: null }];
+    const { GET } = await import("./route");
+    const res = await GET(getReq());
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.coach).toBeNull();
+  });
+
+  it("coach mintato SENZA dati sanitari → healthCoverage null", async () => {
+    state.coachRows = [{
+      id: 1, userId: 1, tokenId: "1", name: "K", personality: "coach", mintTx: "0xmint", ensName: null,
+      healthWindowDays: null, healthFrom: null, healthTo: null, healthMetrics: null,
+    }];
+    const { GET } = await import("./route");
+    const res = await GET(getReq());
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.coach.healthCoverage).toBeNull();
+  });
+
+  it("coach con dati sanitari caricati → healthCoverage riporta SOLO copertura (finestra, metriche), mai valori", async () => {
+    state.coachRows = [{
+      id: 1, userId: 1, tokenId: "1", name: "K", personality: "coach", mintTx: "0xmint", ensName: null,
+      healthWindowDays: 7, healthFrom: "2026-07-19", healthTo: "2026-07-25", healthMetrics: ["restingHr", "hrvSdnnMs", "sleepMin"],
+    }];
+    const { GET } = await import("./route");
+    const res = await GET(getReq());
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.coach.healthCoverage).toEqual({
+      windowDays: 7, from: "2026-07-19", to: "2026-07-25", metrics: ["restingHr", "hrvSdnnMs", "sleepMin"],
+    });
   });
 });

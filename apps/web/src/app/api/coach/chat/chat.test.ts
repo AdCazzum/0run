@@ -44,10 +44,13 @@ vi.mock("@/lib/zerog/storage", () => ({
   }),
 }));
 
+// v1 -> v2 migration (parseMemory) is exercised for real in coach.test.ts;
+// this fixture stays v2-shaped since the route now goes through parseMemory
+// (@/lib/coach/memory) rather than decryptJson(..., CoachMemorySchema) directly.
 const decryptedMemory: CoachMemory = {
-  version: 1,
+  version: 2,
   coach: { name: "K", personality: "coach" },
-  privateLayer: { runs: [] },
+  privateLayer: { runs: [], healthSnapshot: null },
 };
 vi.mock("@/lib/crypto/aes", async (orig) => ({
   ...(await orig()) as object,

@@ -50,6 +50,34 @@ export const coaches = pgTable("coaches", {
   // as agentId above: rows minted before this column existed predate it, and
   // a coach ENS assignment failed for is still a fully valid coach.
   ensName: text("ens_name"),
+  // --- Health data (docs/superpowers/specs/2026-07-25-health-data-spec.md) --
+  // COVERAGE METADATA ONLY — never a health value. The values themselves
+  // live exclusively in the user-key-encrypted memory (privateLayer.
+  // healthSnapshot, see @0run/shared) and, raw, on 0G Storage under
+  // healthRoot. This is the same "index, not source of truth" role
+  // memoryRoot/profileRoot play for the rest of the coach: the UI reads
+  // ONLY these columns to render "N days · resting HR, HRV, sleep, steps" —
+  // never a number. All nullable: most coaches never upload health data.
+  //
+  // Root hash of the RAW export, encrypted with the athlete's own user key
+  // and uploaded to 0G Storage (see /api/health-data) — same "committed
+  // locally via prepareEncryptedUpload before the slow network upload even
+  // starts" pattern as the mint route's memory/profile roots.
+  healthRoot: text("health_root"),
+  // parseHealthExport()'s coverage window — first/last day with any data and
+  // the day count, so the UI can say "7 days" without decrypting anything.
+  healthWindowDays: integer("health_window_days"),
+  healthFrom: text("health_from"), // YYYY-MM-DD
+  healthTo: text("health_to"), // YYYY-MM-DD
+  // Which metrics were present in the export (e.g. ["restingHr","hrvSdnnMs",
+  // "sleepMin"]) — names only, never a single measurement.
+  healthMetrics: jsonb("health_metrics").$type<string[]>(),
+  // snapshot.exportedAt as reported by the export file itself (a date/time
+  // string, not a value in the health sense).
+  healthExportedAt: text("health_exported_at"),
+  // When 0run last accepted a health upload for this coach (server clock,
+  // distinct from healthExportedAt above).
+  healthUploadedAt: timestamp("health_uploaded_at"),
 });
 
 export const runs = pgTable("runs", {

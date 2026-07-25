@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
-import { CoachMemorySchema } from "@0run/shared";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
 import { chatMessages, coaches, runs } from "@/db/schema";
 import { decryptJson } from "@/lib/crypto/aes";
 import { downloadDecrypted } from "@/lib/zerog/storage";
-import { buildProfile } from "@/lib/coach/memory";
+import { buildProfile, parseMemory } from "@/lib/coach/memory";
 import { buildChatMessages } from "@/lib/coach/prompts";
 import { coachComplete } from "@/lib/inference";
 import type { ChatMsg } from "@/lib/inference";
@@ -66,7 +65,10 @@ export async function POST(req: Request) {
       if (!dl.ok) return NextResponse.json({ error: dl.error }, { status: 502 });
       memoryCipherText = dl.data.toString("utf8");
     }
-    const memory = decryptJson(memoryCipherText, userKey, CoachMemorySchema);
+    // parseMemory (not decryptJson(..., CoachMemorySchema) directly): real
+    // memories already on 0G Storage may still be v1 (pre-healthSnapshot) —
+    // see apps/web/src/lib/coach/memory.ts for the migration.
+    const memory = parseMemory(decryptJson(memoryCipherText, userKey, z.unknown()));
     const profile = buildProfile(memory);
 
     // Pin the specific run this chat is scoped to (run page) so "how did it
@@ -81,10 +83,13 @@ export async function POST(req: Request) {
     const pastHistory: ChatMsg[] = (await db.select().from(chatMessages).where(eq(chatMessages.userId, user.userId)))
       .map((m: any) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
-    let messages = buildChatMessages(profile, memory.privateLayer.runs, [
-      ...pastHistory,
-      { role: "user", content: message },
-    ]);
+    let messages = buildChatMessages(
+      profile, memory.privateLayer.runs,
+      [...pastHistory, { role: "user", content: message }],
+      // Decrypted private-layer health snapshot, if any — same "owner's own
+      // decrypt path only" contract as the run pipeline (see prompts.ts).
+      memory.privateLayer.healthSnapshot,
+    );
 
     if (pinnedRun) {
       const pin: ChatMsg = {

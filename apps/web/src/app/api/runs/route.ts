@@ -21,6 +21,11 @@ export async function GET(req: Request) {
       coach: coach && {
         id: coach.id, name: coach.name, personality: coach.personality,
         tokenId: coach.tokenId, mintTx: coach.mintTx, ensName: coach.ensName,
+        // Coverage only, never a value (docs/superpowers/specs/2026-07-25-
+        // health-data-spec.md) — null until /api/health-data has been used.
+        healthCoverage: coach.healthWindowDays != null
+          ? { windowDays: coach.healthWindowDays, from: coach.healthFrom, to: coach.healthTo, metrics: coach.healthMetrics ?? [] }
+          : null,
       },
     });
   } catch (e: any) {

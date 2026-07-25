@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { CoachMemorySchema } from "@0run/shared";
+import { z } from "zod";
 import { db } from "@/db";
 import { coaches, runs, type RunStep, type StepState } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -8,7 +8,7 @@ import { decryptJson, encryptJson } from "../crypto/aes";
 import { downloadDecrypted, uploadEncrypted } from "../zerog/storage";
 import { toBytes32, updateRegistry } from "../zerog/contracts";
 import { completeJson } from "../inference";
-import { appendRun, buildProfile, persistMemory } from "./memory";
+import { appendRun, buildProfile, parseMemory, persistMemory } from "./memory";
 import { buildReportMessages, ReportSchema } from "./prompts";
 import { scoreRun } from "./score";
 
@@ -95,7 +95,10 @@ export async function processRun(
       if (!memDl.ok) return fail("update_memory", memDl.error);
       memoryCipherText = memDl.data.toString("utf8");
     }
-    const memory = decryptJson(memoryCipherText, userKey, CoachMemorySchema);
+    // parseMemory (not decryptJson(..., CoachMemorySchema) directly): real
+    // memories already on 0G Storage may still be v1 (pre-healthSnapshot) —
+    // see apps/web/src/lib/coach/memory.ts for the migration.
+    const memory = parseMemory(decryptJson(memoryCipherText, userKey, z.unknown()));
 
     // AMENDMENT 2 (SSOT): the manifest fields land on the RunSummary right
     // here, when it's appended. `report` is null: inference (step 5) runs
@@ -152,6 +155,11 @@ export async function processRun(
       buildReportMessages(
         profile, memory.privateLayer.runs, stats, feelings,
         scoreOutcome.ok ? { score: scoreOutcome.score, verified: scoreOutcome.verified } : null,
+        // Decrypted private-layer health snapshot, if the athlete has
+        // uploaded one (see /api/health-data) — never sourced from the
+        // public profile, so this can only ever populate on the owner's own
+        // decrypt path (this pipeline), never on the letting path.
+        memory.privateLayer.healthSnapshot,
       ),
     );
     await mark("inference", { status: "done" }, {

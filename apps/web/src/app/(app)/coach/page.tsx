@@ -7,6 +7,7 @@ import { explorerTx } from "@0run/shared";
 import { Button } from "@/components/ui/button";
 import { Chat } from "@/components/run/chat";
 import { CoachBadge } from "@/components/crew/coach-badge";
+import { HealthDataStatus } from "@/components/coach/health-data-status";
 import type { CoachSummary } from "@/components/run/types";
 
 /**
@@ -82,9 +83,7 @@ export default function CoachPage() {
           )}
           {/* Health data is context, not an activity: it never appears in the feed,
               only as coverage here, and its effect shows up inside the reports. */}
-          <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
-            health data · not connected
-          </span>
+          <HealthDataStatus coverage={coach.healthCoverage} onUploaded={load} />
         </div>
         <CoachBadge />
       </header>

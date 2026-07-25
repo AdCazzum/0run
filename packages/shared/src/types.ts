@@ -57,10 +57,79 @@ export const RunSummarySchema = RunStatsSchema.extend({
 });
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 
-export const CoachMemorySchema = z.object({
+// --- Health snapshot -------------------------------------------------------
+// Duplicated (not imported) from apps/web/src/lib/health/parse.ts's
+// DailyHealthSchema/HealthSnapshotSchema — same reasoning as RunReportSchema
+// above: that parser lives in the app layer (already proven against a real
+// 11 MB export, see docs/superpowers/specs/2026-07-25-health-data-spec.md),
+// while this copy exists only so CoachMemorySchema (below) can describe what
+// the private layer holds. A shared -> app import would invert the package
+// dependency direction (apps depend on @0run/shared, never the reverse), so
+// the two are kept structurally identical by convention instead — whatever
+// parseHealthExport() returns satisfies this schema by construction, since
+// both are the same zod shape.
+export const DailyHealthSchema = z.object({
+  date: z.string(), // YYYY-MM-DD
+  sleepMin: z.number().min(0).nullable(),
+  restingHr: z.number().positive().nullable(),
+  hrvSdnnMs: z.number().positive().nullable(),
+  steps: z.number().min(0).nullable(),
+  activeKcal: z.number().min(0).nullable(),
+});
+export type DailyHealth = z.infer<typeof DailyHealthSchema>;
+
+export const HealthSnapshotSchema = z.object({
+  source: z.literal("apple-health-json"),
+  exportedAt: z.string(),
+  // min(0), not positive(): an export with no datapoints/date_range at all
+  // still produces a valid snapshot with an empty window (parse.ts, "array
+  // vuoti" test), not a throw.
+  windowDays: z.number().int().min(0),
+  days: z.array(DailyHealthSchema).max(30),
+  baselines: z.object({
+    restingHr: z.number().nullable(),
+    hrvSdnnMs: z.number().nullable(),
+    sleepMin: z.number().nullable(),
+  }),
+  vo2max: z.number().positive().nullable(),
+  otherWorkouts: z.array(z.object({ type: z.string(), count: z.number().int().min(0) })),
+});
+export type HealthSnapshot = z.infer<typeof HealthSnapshotSchema>;
+
+// --- CoachMemory v1 (frozen) ------------------------------------------------
+// Exact shape memories were written in before healthSnapshot existed —
+// frozen on purpose, never edited again. Real encrypted memories already on
+// 0G Storage were written against this shape; parseMemory()
+// (apps/web/src/lib/coach/memory.ts) tries CoachMemorySchema (v2, below)
+// first, falls back to this, and migrates. Do not add fields here: a v1
+// memory that doesn't match this exactly should fail to parse as v1, not be
+// silently coerced into matching.
+export const CoachMemoryV1Schema = z.object({
   version: z.literal(1),
   coach: z.object({ name: z.string().min(1), personality: PersonalitySchema }),
   privateLayer: z.object({ runs: z.array(RunSummarySchema) }),
+});
+export type CoachMemoryV1 = z.infer<typeof CoachMemoryV1Schema>;
+
+// --- CoachMemory v2 ----------------------------------------------------------
+// Adds the private, user-key-encrypted health snapshot (see
+// docs/superpowers/specs/2026-07-25-health-data-spec.md). `healthSnapshot` is
+// nullable, not optional: "no health data uploaded yet" is a real state every
+// v2 memory carries explicitly, distinct from "field not sent" (same
+// convention as RunSummary.feelings above). Deliberately NOT expressed as
+// `z.union([CoachMemoryV1Schema, CoachMemorySchema]).transform(...)` on the
+// exported schema — a union+transform would change the inferred CoachMemory
+// type for every caller in the app just to accommodate a migration path.
+// parseMemory() (apps/web/src/lib/coach/memory.ts) does the v1->v2 migration
+// as an explicit function instead; this schema stays the single, unambiguous
+// source of the CoachMemory type.
+export const CoachMemorySchema = z.object({
+  version: z.literal(2),
+  coach: z.object({ name: z.string().min(1), personality: PersonalitySchema }),
+  privateLayer: z.object({
+    runs: z.array(RunSummarySchema),
+    healthSnapshot: HealthSnapshotSchema.nullable().default(null),
+  }),
 });
 export type CoachMemory = z.infer<typeof CoachMemorySchema>;
 
@@ -87,7 +156,7 @@ export const PERSONALITY_STYLE: Record<Personality, string> = {
 export function initialMemory(name: string, personality: Personality): { memory: CoachMemory; profile: CoachProfile } {
   PersonalitySchema.parse(personality);
   return {
-    memory: { version: 1, coach: { name, personality }, privateLayer: { runs: [] } },
+    memory: { version: 2, coach: { name, personality }, privateLayer: { runs: [], healthSnapshot: null } },
     profile: { version: 1, name, personality, totals: { runs: 0, km: 0 }, paceTrend: [], styleNotes: PERSONALITY_STYLE[personality] },
   };
 }
