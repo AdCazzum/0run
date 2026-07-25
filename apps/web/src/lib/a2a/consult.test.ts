@@ -80,4 +80,16 @@ describe("consultCoach", () => {
     expect(res).toMatchObject({ ok: false });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("200 con body vuoto → ok:false, malformato", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
+    const res = await consultCoach("marco.0run.eth", "pedro.0run.eth", "q", "");
+    expect(res).toMatchObject({ ok: false });
+  });
+
+  it("200 con reply ma senza coach → ok:false, malformato", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ reply: "Progressivi." }), { status: 200 }));
+    const res = await consultCoach("marco.0run.eth", "pedro.0run.eth", "q", "");
+    expect(res).toMatchObject({ ok: false });
+  });
 });

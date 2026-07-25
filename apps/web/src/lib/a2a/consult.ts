@@ -53,6 +53,18 @@ export async function consultCoach(from: string, to: string, question: string, c
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: body.error ?? `HTTP ${res.status}` };
+    // A 200 from a remote agent.json endpoint we don't control is still an
+    // untrusted body — validate shape before trusting it, so a malformed
+    // peer reply degrades to ok:false instead of throwing later in the chat
+    // route (which would surface as an unhandled 500 to the athlete).
+    if (
+      typeof body.reply !== "string" ||
+      typeof body.coach?.name !== "string" ||
+      typeof body.coach?.ensName !== "string" ||
+      typeof body.coach?.personality !== "string"
+    ) {
+      return { ok: false, error: "risposta del coach remoto malformata" };
+    }
     return { ok: true, to, question, reply: body.reply, coach: body.coach };
   } catch (e: any) {
     return { ok: false, error: e.message ?? String(e) };

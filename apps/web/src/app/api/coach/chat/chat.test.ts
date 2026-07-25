@@ -253,4 +253,20 @@ describe("POST /api/coach/chat", () => {
     expect(res.status).toBe(200);
     expect(consultCoachMock).not.toHaveBeenCalled();
   });
+
+  it("marker con coach fuori roster → trattato come nessun marker, marker ripulito dalla reply, nessuna chiamata A2A", async () => {
+    coachCompleteMock.mockResolvedValueOnce({
+      text: `<consult coach="estraneo.0run.eth">Lunghi?</consult> Comunque, aumenta gradualmente il volume.`,
+      verified: null, model: "glm-5.2", path: "router" as const,
+    });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(consultCoachMock).not.toHaveBeenCalled();
+    expect(coachCompleteMock).toHaveBeenCalledTimes(1); // nessuna seconda inference
+    expect(body.reply).not.toContain("<consult");
+    expect(body.consult).toBeUndefined();
+  });
 });

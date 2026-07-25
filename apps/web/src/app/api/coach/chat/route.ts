@@ -135,7 +135,11 @@ export async function POST(req: Request) {
     let consult: { to: string; toTokenId: string | null; question: string; reply: string; coachName: string } | undefined;
 
     const { marker } = parseConsultMarker(completion.text);
-    if (marker && coach.ensName) {
+    // The model can hallucinate a coach that isn't in the roster we gave it
+    // (or that dropped out between prompt build and completion) — treat that
+    // exactly like "no marker": strip it, no A2A call. Never resolve/consult
+    // an ENS name we didn't ourselves offer as a colleague.
+    if (marker && coach.ensName && roster.some((r) => r.ensName === marker.coach)) {
       const contextSummary = pinnedRun ? `L'ultimo run del mio atleta: ${JSON.stringify(pinnedRun.stats)}` : "";
       const result = await consultCoach(coach.ensName, marker.coach, marker.question, contextSummary);
       const followUp: ChatMsg = result.ok
