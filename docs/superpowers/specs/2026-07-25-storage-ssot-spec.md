@@ -124,3 +124,8 @@ Prerequisito: decidere **prima** di implementare T13/T14 — così i campi nasco
 - **Garbage collection dei blob storici** — su 0G i blob sono immutabili; le versioni vecchie restano (ed è un pregio, §4).
 - **Key escrow / recovery cross-device della chiave** — la chiave deriva dalla firma del wallet Privy: finché l'utente ha il login, ha la chiave. Perdita account Privy = perdita dati: limite dichiarato, non lo risolviamo in hackathon.
 - **Dedup storage-level o convergent encryption** — il nonce random resta: la non-correlabilità vale più del risparmio di spazio.
+
+## Decisioni prese (2026-07-25, Ivan)
+
+- **Opzione B approvata**: la memoria cifrata è il manifest dell'utente. `RunSummary` si estende con `gpxRoot`, `gpxContentHash` e `report`; emendamento già scritto sul Task 14 del piano.
+- **La demo live "ammazzo il DB → re-sync" NON si fa.** Il re-sync resta implementato e documentato nel runbook, e si racconta a parole nel pitch: l'indexer testnet è troppo instabile per rischiare quel momento davanti ai giudici.

@@ -145,3 +145,9 @@ Posizione nell'ordine di build: **dopo** il ciclo core (login→mint→upload→
 
 - Codice toccato: `packages/shared/src/types.ts` · `apps/web/src/lib/coach/{memory,prompts}.ts` · `apps/web/src/lib/zerog/storage.ts` (riuso) · `apps/web/src/db/schema.ts` · nuova `apps/web/src/lib/health/` · nuova route `apps/web/src/app/api/health/upload/`.
 - Enum sonno: HKCategoryValueSleepAnalysis (Apple HealthKit docs) — fidarsi del `value`, non delle label dell'app di export.
+
+## Decisioni prese (2026-07-25, Ivan)
+
+- **App di export**: `Health Data Export` (iOS) per i dati sanitari, `Workout Copy` per i GPX. Sono i nomi da citare nelle istruzioni in UI e nel README: l'utente esporta da lì e carica il file su 0run.
+- **Demo**: si usano gli **export sanitari reali di Ivan**, non dati sintetici. I giudici vedono dati veri; la garanzia è che restano cifrati con la chiave derivata dal suo wallet e che il coaching profile pubblico non li contiene (test di regressione a protezione dell'invariante).
+- Resta da decidere al momento del cut se l'upload raw da 11 MB entra in demo o se si parte dal fallback snapshot-only.

@@ -126,3 +126,8 @@ Nessuna migration tocca tabelle esistenti oltre le due colonne su `users`: F1 è
 - ERC-8004 su Galileo: IdentityRegistry `0x8004A818BFB912233c491871b3d84c89A494BD9e` · ReputationRegistry `0x8004B663056A597Dffe9eCcC1965A193B7388713` · 8004scan.io
 - Flusso World ID riusato: design MVP §5 (IDKit v4 cloud-verify, signal binding, anti-replay Postgres — pattern provenance-miniapp con bug corretti)
 - Letting e memoria a due strati: design MVP §3-§4; `OrunAgentNFT.authorizeUsage` + `CoachRental` (decisions.md: vendor 0G scartato per EIP-170, OrunAgentNFT autoritativo)
+
+## Decisioni prese (2026-07-25, Ivan)
+
+- **Coach umano in demo**: un membro del team verificato con World ID che si **autodichiara** coach. Nessun tentativo di far passare l'autodichiarazione per una verifica formale: il badge in UI dice "autodichiarato" e in Q&A si spiega la scala di fiducia (umano unico verificato → self-claim → reputazione guadagnata).
+- Conseguenza: F1 (claim + badge) resta l'unico pezzo in-hackathon; niente reclutamento di coach esterni alla Morning Run.
