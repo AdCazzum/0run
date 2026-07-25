@@ -13,15 +13,42 @@ const PERSONALITIES: { id: Personality; title: string }[] = [
   { id: "drill_sergeant", title: "The Drill Sergeant" },
 ];
 
-// Real inference + 0G Storage finality run tens of seconds long. A step
-// label that advances slowly tells the truth about that latency instead of
-// a spinner that implies the mint is instant.
-const MINT_STEPS = [
-  "encrypting your data",
-  "uploading to 0g storage",
-  "minting on 0g galileo…",
-  "writing to the coach registry",
-];
+// Root hashes are now computed locally before any network call, so the
+// on-chain mint itself is a matter of seconds (see docs/0g-reality-check.md
+// and the mint route). The old fixed 4-step/4s-per-step timeline implied a
+// slow, linear pipeline that no longer matches reality — and hid the one
+// thing that genuinely is slow (0G Storage propagation, which now happens
+// in the BACKGROUND, after the response). An honest UI needs only two
+// things: a real elapsed-time counter, and a label that switches once from
+// "local, near-instant" to "waiting on-chain" — driven by actual elapsed
+// time, not a fake cadence.
+const ENCRYPT_LABEL_WINDOW_SEC = 3;
+
+/** mm:ss, always two digits each — a genuine ticking counter, not a guess dressed as one. */
+function formatElapsed(totalSec: number): string {
+  const m = Math.floor(totalSec / 60).toString().padStart(2, "0");
+  const s = (totalSec % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+// The server budgets its own synchronous (on-chain) work at 90s and returns
+// an honest 504 past that (see MINT_BUDGET_MS in the mint route) rather than
+// letting nginx's 300s proxy cutoff kill the connection with no explanation.
+// This client-side abort sits comfortably above that server budget — enough
+// margin for network latency and queuing — but still finite: the fetch must
+// never hang forever on the client either.
+const MINT_CLIENT_TIMEOUT_MS = 120_000;
+const FUND_CLIENT_TIMEOUT_MS = 10_000; // best-effort gas top-up; short leash, never blocks the mint
+
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 type Phase = "form" | "minting" | "success";
 type MintResult = { tokenId: string; mintTx: string; explorerUrl: string };
@@ -51,15 +78,17 @@ export default function MintPage() {
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MintResult | null>(null);
-  const [stepIndex, setStepIndex] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const submitting = useRef(false);
 
   useEffect(() => {
     if (phase !== "minting") return;
-    setStepIndex(0);
-    const id = setInterval(() => setStepIndex((i) => Math.min(i + 1, MINT_STEPS.length - 1)), 4000);
+    setElapsedSec(0);
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
     return () => clearInterval(id);
   }, [phase]);
+
+  const mintLabel = elapsedSec < ENCRYPT_LABEL_WINDOW_SEC ? "encrypting your data" : "minting on 0g galileo…";
 
   async function handleMint() {
     if (submitting.current || !selected || !name.trim()) return;
@@ -72,19 +101,30 @@ export default function MintPage() {
 
       // Best-effort gas top-up for the user's embedded wallet. The mint
       // itself is paid for server-side by the treasury signer (see
-      // mintCoachOnChain), so a funding hiccup (cap reached, rpc blip)
-      // must not block minting the coach.
+      // mintCoachOnChain), so a funding hiccup (cap reached, rpc blip,
+      // or even a hang) must not block minting the coach — bounded by its
+      // own short timeout so it can never stall the flow below.
       try {
-        await fetch("/api/fund", { method: "POST", headers: { authorization: `Bearer ${token}` } });
+        await fetchWithTimeout("/api/fund", { method: "POST", headers: { authorization: `Bearer ${token}` } }, FUND_CLIENT_TIMEOUT_MS);
       } catch {
         /* non-fatal, see above */
       }
 
-      const res = await fetch("/api/coach/mint", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: name.trim(), personality: selected, userKeyHex: keyHex }),
-      });
+      let res: Response;
+      try {
+        res = await fetchWithTimeout("/api/coach/mint", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ name: name.trim(), personality: selected, userKeyHex: keyHex }),
+        }, MINT_CLIENT_TIMEOUT_MS);
+      } catch (e: any) {
+        if (e?.name === "AbortError") {
+          throw new Error(
+            "this is taking longer than expected — the mint may have gone through on-chain even though we didn't hear back; wait a moment, then try again",
+          );
+        }
+        throw e;
+      }
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "mint failed");
       setResult(body);
@@ -170,7 +210,12 @@ export default function MintPage() {
           </div>
 
           <div className="col-span-12 md:col-span-5 md:col-start-2">
-            {error && <p className="mb-4 font-sans text-sm text-orange">{error}</p>}
+            {error && (
+              <div className="mb-6 flex items-start gap-4">
+                <span aria-hidden className="mt-1 h-px w-12 shrink-0 bg-orange" />
+                <p className="font-sans text-sm leading-relaxed text-orange">{error}</p>
+              </div>
+            )}
             {ready && !authenticated ? (
               <Button variant="primary" onClick={() => login()}>
                 Sign in to continue
@@ -181,7 +226,7 @@ export default function MintPage() {
                 disabled={!ready || !selected || !name.trim()}
                 onClick={handleMint}
               >
-                Mint your coach
+                {error ? "Try again" : "Mint your coach"}
               </Button>
             )}
           </div>
@@ -193,14 +238,17 @@ export default function MintPage() {
           <div className="flex items-center gap-4">
             <span aria-hidden className="h-px w-12 bg-orange" />
             <FadingLabel
-              key={stepIndex}
-              text={MINT_STEPS[stepIndex]}
+              key={mintLabel}
+              text={mintLabel}
               className="font-sans text-xs uppercase tracking-[0.3em] text-navy"
             />
+            <span aria-live="polite" className="font-sans text-xs tabular-nums text-ocean">
+              {formatElapsed(elapsedSec)}
+            </span>
           </div>
           <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-ocean">
-            This is a real transaction on 0G Galileo — inference and storage finality take a little
-            time. Stay on this page.
+            The on-chain mint itself is a matter of seconds — your coach&rsquo;s encrypted memory
+            keeps propagating to 0G Storage in the background after that. Stay on this page.
           </p>
         </div>
       )}
@@ -215,6 +263,10 @@ export default function MintPage() {
             {name} is <em className="italic text-orange">live</em>.
           </h2>
           <p className="mt-6 font-sans text-sm text-ocean">Token #{result.tokenId}</p>
+          <p className="mt-2 max-w-md font-sans text-sm leading-relaxed text-ocean">
+            Confirmed on-chain now. Encrypted storage propagation continues in the background —
+            your coach is ready to use in the meantime.
+          </p>
           <div className="mt-8">
             <Button
               variant="link"

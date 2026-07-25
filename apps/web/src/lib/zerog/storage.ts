@@ -117,40 +117,67 @@ let deps: Deps | null = null;
 const getDeps = () => (deps ??= realDeps());
 export function _setDepsForTest(d: Deps) { deps = d; }
 
+/**
+ * Splits hashing from uploading. `makeData` (SDK merkle-tree computation
+ * over the encrypted stream) is pure, local, and fast — it needs no network
+ * call — so callers that only need the rootHash to anchor on-chain (e.g. the
+ * mint route) can await just that, get the hash back in milliseconds, and
+ * defer the slow/sometimes-hanging network upload (see UPLOAD_ATTEMPT_TIMEOUT_MS
+ * above and docs/0g-reality-check.md) to a background task via the returned
+ * `upload()` closure. `uploadEncrypted` below is now expressed in terms of
+ * this function and keeps its exact prior contract (await both halves,
+ * never throw).
+ */
+export async function prepareEncryptedUpload(
+  bytes: Uint8Array, key: Buffer,
+): Promise<{ rootHash: string; upload: () => Promise<StorageReceipt> }> {
+  const d = getDeps();
+  const { data, rootHash } = await d.makeData(bytes, key);
+  const uploadTimeoutMs = d.uploadTimeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS;
+
+  const upload = async (): Promise<StorageReceipt> => {
+    try {
+      let lastErr = "";
+      for (let attempt = 0; attempt < 3; attempt++) {
+        let tx: string | null;
+        let err: Error | null;
+        try {
+          [tx, err] = await withTimeout(d.doUpload(data, key), uploadTimeoutMs, "0G storage upload attempt");
+        } catch (timeoutErr) {
+          // The SDK has no internal timeout, and we've measured cases where
+          // the on-chain submission still landed (nonce advanced, balance
+          // debited) even though this call never returned. Do not let callers
+          // conclude "nothing happened" — the tx may exist despite the timeout.
+          lastErr = `${String(timeoutErr)} — the on-chain submission may still have landed even though this call did not return; check the treasury nonce/balance before retrying`;
+          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          continue;
+        }
+        if (!err) {
+          // SDK default `skipIfFinalized: true`: if this exact encrypted
+          // stream is already finalized on the network, Uploader.uploadFile()
+          // short-circuits and returns { txHash: '', rootHash, txSeq } with
+          // err === null (Uploader.js:39-42) — that's success, not a
+          // retryable failure. An empty txHash just means "no new tx was
+          // needed"; represent that honestly rather than pretending a real
+          // tx hash exists.
+          return { ok: true, rootHash, txHash: tx || "already-finalized" };
+        }
+        lastErr = String(err);
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      }
+      return { ok: false, error: `upload failed after 3 attempts: ${lastErr}` };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  };
+
+  return { rootHash, upload };
+}
+
 export async function uploadEncrypted(bytes: Uint8Array, key: Buffer): Promise<StorageReceipt> {
   try {
-    const d = getDeps();
-    const { data, rootHash } = await d.makeData(bytes, key);
-    const uploadTimeoutMs = d.uploadTimeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS;
-    let lastErr = "";
-    for (let attempt = 0; attempt < 3; attempt++) {
-      let tx: string | null;
-      let err: Error | null;
-      try {
-        [tx, err] = await withTimeout(d.doUpload(data, key), uploadTimeoutMs, "0G storage upload attempt");
-      } catch (timeoutErr) {
-        // The SDK has no internal timeout, and we've measured cases where
-        // the on-chain submission still landed (nonce advanced, balance
-        // debited) even though this call never returned. Do not let callers
-        // conclude "nothing happened" — the tx may exist despite the timeout.
-        lastErr = `${String(timeoutErr)} — the on-chain submission may still have landed even though this call did not return; check the treasury nonce/balance before retrying`;
-        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-        continue;
-      }
-      if (!err) {
-        // SDK default `skipIfFinalized: true`: if this exact encrypted
-        // stream is already finalized on the network, Uploader.uploadFile()
-        // short-circuits and returns { txHash: '', rootHash, txSeq } with
-        // err === null (Uploader.js:39-42) — that's success, not a
-        // retryable failure. An empty txHash just means "no new tx was
-        // needed"; represent that honestly rather than pretending a real
-        // tx hash exists.
-        return { ok: true, rootHash, txHash: tx || "already-finalized" };
-      }
-      lastErr = String(err);
-      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-    }
-    return { ok: false, error: `upload failed after 3 attempts: ${lastErr}` };
+    const { upload } = await prepareEncryptedUpload(bytes, key);
+    return await upload();
   } catch (e) {
     return { ok: false, error: String(e) };
   }
