@@ -50,6 +50,13 @@ const AGENTBOOK_ABI = [
     inputs: [{ name: "agent", type: "address" }],
     outputs: [{ name: "humanId", type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "getNextNonce",
+    stateMutability: "view",
+    inputs: [{ name: "agent", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
 ] as const;
 
 export type HumanLookup = {
@@ -69,11 +76,19 @@ export type HumanLookup = {
   error?: string;
 };
 
-type Reader = { lookupHuman(address: `0x${string}`): Promise<string | null> };
+type Reader = {
+  lookupHuman(address: `0x${string}`): Promise<string | null>;
+  getNextNonce?(address: `0x${string}`): Promise<string>;
+};
 
 let reader: Reader | null = null;
 // Only ACCERTAINED answers land here, and only positive ones (see below).
 const cache = new Map<string, { at: number; humanId: string }>();
+
+/** Checksummed AgentBook address: env override or the canonical World Chain deploy. */
+export function agentBookAddress(): string {
+  return getAddress(process.env.WORLD_AGENTBOOK_ADDRESS ?? DEFAULT_AGENTBOOK_ADDRESS);
+}
 
 function realReader(): Reader {
   const client = createPublicClient({
@@ -85,7 +100,7 @@ function realReader(): Reader {
       retryCount: 0,
     }),
   });
-  const address = getAddress(process.env.WORLD_AGENTBOOK_ADDRESS ?? DEFAULT_AGENTBOOK_ADDRESS);
+  const address = agentBookAddress() as `0x${string}`;
 
   return {
     async lookupHuman(agent) {
@@ -97,6 +112,15 @@ function realReader(): Reader {
       });
       // An unregistered wallet is the zero id, not an error and not a name.
       return humanId === 0n ? null : toHex(humanId);
+    },
+    async getNextNonce(agent) {
+      const nonce = await client.readContract({
+        address,
+        abi: AGENTBOOK_ABI,
+        functionName: "getNextNonce",
+        args: [agent],
+      });
+      return nonce.toString();
     },
   };
 }
@@ -145,6 +169,33 @@ export async function lookupHumanId(address: string): Promise<HumanLookup> {
     // for the next minute.
     const message = e instanceof Error && e.message ? e.message : String(e);
     return { humanId: null, error: message || "agentbook lookup failed" };
+  }
+}
+
+export type NonceLookup = { nonce: string } | { error: string };
+
+/**
+ * Next registration nonce for a wallet — part of the World ID signal the
+ * person approves in World App (solidityEncode of [address, nonce]), so it is
+ * read fresh per attempt and NEVER cached: a stale nonce makes the relay
+ * reject the whole proof. Same never-throws + timeout discipline as
+ * lookupHumanId above.
+ */
+export async function getAgentNonce(address: string): Promise<NonceLookup> {
+  let agent: `0x${string}`;
+  try {
+    agent = getAddress(address);
+  } catch {
+    return { error: `indirizzo non valido: ${address}` };
+  }
+  const r = (reader ??= realReader());
+  if (!r.getNextNonce) return { error: "nonce reader non disponibile" };
+  try {
+    const nonce = await withTimeout(r.getNextNonce(agent), LOOKUP_TIMEOUT_MS, "agentbook nonce timeout");
+    return { nonce };
+  } catch (e) {
+    const message = e instanceof Error && e.message ? e.message : String(e);
+    return { error: message || "agentbook nonce lookup failed" };
   }
 }
 
