@@ -1,0 +1,65 @@
+name: Deploy
+
+# Deploys the pushed commit to the 0run.fun host. The image is built ON THE SERVER,
+# so no production secret ever exists in this (public) repository or in CI logs.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  # Gate: the deploy job below cannot start until the full CI suite passes on this commit.
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Validate target revision
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          # Never interpolate context values straight into a shell command: bind to an
+          # env var and validate the shape before it reaches the remote host.
+          case "$TARGET_SHA" in
+            [0-9a-f]*) [ ${#TARGET_SHA} -eq 40 ] || { echo "unexpected sha length"; exit 1; } ;;
+            *) echo "sha is not lowercase hex"; exit 1 ;;
+          esac
+          echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash /srv/0run/deploy/deploy.sh '$TARGET_SHA'"
+
+      - name: Verify the site is serving the new revision
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS --max-time 10 https://0run.fun/api/health | tee /tmp/health | grep -q '"ok":true'; then
+              cat /tmp/health; exit 0
+            fi
+            sleep 6
+          done
+          echo "health endpoint did not report ok after deploy"; exit 1

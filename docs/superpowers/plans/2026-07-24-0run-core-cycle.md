@@ -2034,6 +2034,7 @@ git add apps/web/src && git commit -m "feat(web): coach mint flow — api, oncha
 
 **Interfaces:**
 - Consumes: parser (Task 4), crypto (5), storage (7), inference (8), memoria (10), contratti (13: `updateRegistry`), db (6).
+- **Emendamento SSOT (approvato 2026-07-25, vedi `docs/superpowers/specs/2026-07-25-storage-ssot-spec.md`):** `RunSummary` in `packages/shared/src/types.ts` si estende con `gpxRoot: string`, `gpxContentHash: string` (keccak256 del GPX in chiaro, per dedup applicativo) e `report: Report | null`. La memoria cifrata diventa così il manifest completo dell'utente: il DB è interamente ricostruibile da Storage + chain senza contratti, upload o tx aggiuntivi. La pipeline scrive questi campi quando aggiunge la corsa alla memoria.
 - Produces: `POST /api/runs` (multipart: `gpx` file + `userKeyHex`) → `{ runId }` subito, elaborazione in background · `GET /api/runs/:id` → riga run con `steps` (per il polling della UI) · `processRun(runId, userId, gpxXml, userKey): Promise<void>` in `pipeline.ts` — aggiorna `runs.steps` step-by-step, mai throw non gestito (stato `error` con detail).
 
 - [ ] **Step 1: Failing test pipeline (dipendenze mockate)**

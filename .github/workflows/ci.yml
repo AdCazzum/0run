@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: ["feat/**"]
+  pull_request:
+    branches: [main]
+  # Deploy invokes this workflow as its gate, so main is tested exactly once per push.
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests (workspaces)
+        # DATABASE_URL is deliberately unset: the db-backed test self-skips.
+        run: npm run test --workspaces --if-present
+      - name: Contract tests
+        run: npx hardhat test
+        working-directory: contracts
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: apps/web
+      - name: Build
+        # Placeholder public env: the real value is baked on the server at deploy time.
+        env:
+          NEXT_PUBLIC_PRIVY_APP_ID: ci-placeholder-app-id
+        run: npm run build --workspace web

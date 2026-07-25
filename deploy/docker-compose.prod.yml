@@ -1,0 +1,60 @@
+# Production stack for 0run on the Hetzner host.
+# TLS and :80/:443 are owned by the host's system nginx (see deploy/nginx-0run.conf),
+# so this stack publishes the app on loopback only and runs no reverse proxy of its own.
+name: orun
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: orun
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: orun
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    # No ports: the database is reachable only from this compose network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orun -d orun"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      target: migrator
+      args:
+        NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID}
+    env_file: [../.env]
+    environment:
+      DATABASE_URL: postgres://orun:${POSTGRES_PASSWORD}@db:5432/orun
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      target: runner
+      args:
+        NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID}
+    restart: unless-stopped
+    env_file: [../.env]
+    environment:
+      DATABASE_URL: postgres://orun:${POSTGRES_PASSWORD}@db:5432/orun
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  dbdata:
