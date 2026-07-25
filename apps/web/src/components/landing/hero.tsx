@@ -4,6 +4,7 @@ import { useLogin, usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Typewriter } from "@/components/landing/typewriter";
+import { HumanBadge } from "@/components/world/human-badge";
 import { usePrivyReady } from "@/app/providers";
 
 const ROTATING_WORDS = ["Coach", "Data", "Training", "Health"];
@@ -81,6 +82,7 @@ export function Hero() {
             How it works
           </Button>
         </div>
+        <HumanBadge />
       </div>
     </section>
   );
