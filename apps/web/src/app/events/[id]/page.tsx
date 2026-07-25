@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { claims, events, users } from "@/db/schema";
 import { ClaimWidget } from "./claim-widget";
 import { SiteHeader } from "@/components/landing/site-header";
+import { eventsEnabled } from "@/lib/features";
 import { SiteFooter } from "@/components/landing/site-footer";
 
 // Queries Postgres per request. Without this Next tries to prerender it at build
@@ -32,6 +33,7 @@ async function loadEvent(idParam: string) {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
+  if (!eventsEnabled()) notFound(); // hidden, not removed — see lib/features.ts
   const data = await loadEvent(id);
   if (!data) return { title: "Event not found — 0run" };
   return { title: `${data.event.name} — 0run events` };

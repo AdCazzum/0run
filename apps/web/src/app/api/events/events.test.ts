@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// Gli eventi sono nascosti in prod (lib/features.ts) ma la feature esiste
+// e resta testata: questi test la accendono. Il gate stesso è verificato in
+// src/lib/features.test.ts.
+process.env.NEXT_PUBLIC_FEATURE_EVENTS = "1";
+
+
 const WALLET = "0x" + "22".repeat(20);
 
 vi.mock("@/lib/auth", () => ({

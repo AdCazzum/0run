@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 const pathname = vi.hoisted(() => ({ value: "/" }));
@@ -15,7 +15,15 @@ vi.mock("@/app/providers", () => ({ usePrivyReady: () => auth.privyReady }));
 
 import { SiteHeader } from "./site-header";
 
+beforeEach(() => {
+  // Events are hidden in production (lib/features.ts); most cases here run with
+  // them visible so the section logic is exercised, and one case asserts that a
+  // hidden section is not linked at all.
+  process.env.NEXT_PUBLIC_FEATURE_EVENTS = "1";
+});
+
 afterEach(() => {
+  delete process.env.NEXT_PUBLIC_FEATURE_EVENTS;
   cleanup();
   auth.ready = true;
   auth.authenticated = false;
@@ -55,6 +63,17 @@ describe("SiteHeader", () => {
     pathname.value = "/coach/3";
     render(<SiteHeader />);
     expect(screen.getByRole("link", { name: /^coaches$/i }).getAttribute("aria-current")).toBeNull();
+  });
+
+  it("una sezione nascosta non viene linkata", () => {
+    delete process.env.NEXT_PUBLIC_FEATURE_EVENTS;
+    pathname.value = "/coaches";
+    render(<SiteHeader />);
+    expect(screen.queryByRole("link", { name: /^events$/i })).toBeNull();
+    // Il resto del menu resta intatto: nascondere una sezione non è rimuovere la
+    // navigazione.
+    expect(screen.getByRole("link", { name: /^coaches$/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /technology/i })).toBeTruthy();
   });
 
   it("chi è loggato ritrova le stesse destinazioni dell'app, non un menu diverso", () => {

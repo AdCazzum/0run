@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { count, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -6,6 +7,7 @@ import { claims, events } from "@/db/schema";
 import { Card } from "@/components/ui/card";
 import { CreateEventForm } from "./create-event-form";
 import { SiteHeader } from "@/components/landing/site-header";
+import { eventsEnabled } from "@/lib/features";
 import { SiteFooter } from "@/components/landing/site-footer";
 
 // Queries Postgres per request. Without this Next tries to prerender it at build
@@ -31,6 +33,10 @@ async function loadFeed() {
 }
 
 export default async function EventsPage() {
+  // Hidden, not removed: the feature works and its code, contracts and tests all
+  // stay — see lib/features.ts. While hidden it must not be reachable by URL
+  // either, or someone lands on a section the site does not offer.
+  if (!eventsEnabled()) notFound();
   const feed = await loadFeed();
 
   return (

@@ -7,6 +7,7 @@ import { explorerTx } from "@0run/shared";
 import { Button } from "@/components/ui/button";
 import { Chat } from "@/components/run/chat";
 import { CoachBadge } from "@/components/crew/coach-badge";
+import { humanCoachEnabled } from "@/lib/features";
 import { CoachBrief } from "@/components/coach/coach-brief";
 import { HealthDataStatus } from "@/components/coach/health-data-status";
 import type { CoachSummary } from "@/components/run/types";
@@ -60,7 +61,7 @@ export default function CoachPage() {
         {/* The self-declared human-coach badge is about the person behind this
             profile, not the AI agent above — it doesn't need a minted coach to
             be reachable. */}
-        <CoachBadge />
+        {humanCoachEnabled() && <CoachBadge />}
       </section>
     );
   }
@@ -86,7 +87,7 @@ export default function CoachPage() {
               only as coverage here, and its effect shows up inside the reports. */}
           <HealthDataStatus coverage={coach.healthCoverage} onUploaded={load} />
         </div>
-        <CoachBadge />
+        {humanCoachEnabled() && <CoachBadge />}
       </header>
 
       {/* The brief is part of who the coach is, so it lives with its identity —

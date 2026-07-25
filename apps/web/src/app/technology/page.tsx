@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteHeader } from "@/components/landing/site-header";
 import { PageChrome } from "@/components/ui/page-chrome";
+import { eventsEnabled, humanCoachEnabled } from "@/lib/features";
 
 export const metadata: Metadata = {
   title: "The technology — 0run",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
     "Every promise on the home page is backed by open, inspectable infrastructure. Encrypted storage, verifiable AI inference, a coach you truly own.",
 };
 
-const PILLARS = [
+const PILLARS: { promise: string; how: string; label: string; visibleWhen?: () => boolean }[] = [
   {
     promise: "Your data stays private",
     how: "Every run is encrypted with AES-256 before it leaves your device and stored on 0G Storage, a decentralized storage network. The encryption key is derived from your wallet signature and is never persisted anywhere: only you can unlock your files.",
@@ -32,6 +33,11 @@ const PILLARS = [
     label: "Agent identity / ENS (Sepolia)",
   },
   {
+    // Shown only while the features it describes are reachable (see
+    // lib/features.ts). A page called "Verifiable by default" cannot describe a
+    // capability a reader has no way to reach — that is the overclaiming this
+    // page exists to avoid.
+    visibleWhen: () => eventsEnabled() || humanCoachEnabled(),
     promise: "Real people, not bot swarms",
     how: "Joining a run event requires a World ID proof of personhood, verified server-side because no World verifier exists on 0G. The proof's nullifier is recorded with a uniqueness constraint, so one real person can join a given event exactly once — no matter how many accounts they create. We are deliberate about what this proves and what it does not: anyone can create an event, so a claim means “a unique real human”, never “this person was there”. A coach can also declare itself human-coached, and the badge says self-declared, because World ID proves a unique human — not a qualification.",
     label: "Proof of personhood / World ID",
@@ -65,7 +71,7 @@ export default function TechnologyPage() {
           </p>
         </section>
 
-        {PILLARS.map((p, i) => (
+        {PILLARS.filter((p) => p.visibleWhen?.() ?? true).map((p, i) => (
           <section key={p.promise} className="border-t border-navy/15">
             <div className="mx-auto grid max-w-[1600px] grid-cols-12 gap-8 px-8 py-16 md:px-16 md:py-24">
               <div className="col-span-12 md:col-span-4 md:col-start-1">
