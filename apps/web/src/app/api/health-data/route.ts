@@ -7,6 +7,7 @@ import { coaches } from "@/db/schema";
 import { decryptJson, canDecrypt } from "@/lib/crypto/aes";
 import { downloadDecrypted, prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { parseMemory, persistMemory, setHealthSnapshot } from "@/lib/coach/memory";
+import { commitMemory, MEMORY_CONFLICT } from "@/lib/coach/commit";
 import { toBytes32, updateRegistry } from "@/lib/zerog/contracts";
 import { parseHealthExport, HealthParseError } from "@/lib/health/parse";
 
@@ -195,10 +196,14 @@ export async function POST(req: Request) {
       console.error("health-data: on-chain memory anchor failed, will re-anchor on the next run", e);
     }
 
-    await db.update(coaches).set({
+    // Compare-and-swap, same as every other writer of this envelope: a run
+    // finishing or a brief edit landing mid-upload must not be erased here.
+    const committed = await commitMemory(user.userId, coach.memoryRoot, {
       memoryRoot: receipts.memory.rootHash,
       profileRoot: receipts.profile.rootHash,
       memoryCipher: receipts.memoryCipher,
+      profileCipher: receipts.profileCipher,
+    }, {
       healthRoot: healthRoot ?? coach.healthRoot,
       healthWindowDays: coverage.days,
       healthFrom: coverage.from || null,
@@ -206,7 +211,8 @@ export async function POST(req: Request) {
       healthMetrics: coverage.metrics,
       healthExportedAt: snapshot.exportedAt || null,
       healthUploadedAt: new Date(),
-    }).where(eq(coaches.id, coach.id));
+    });
+    if (!committed) return NextResponse.json(MEMORY_CONFLICT, { status: 409 });
 
     return NextResponse.json({
       coverage: { windowDays: coverage.days, from: coverage.from || null, to: coverage.to || null, metrics: coverage.metrics },

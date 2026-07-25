@@ -9,6 +9,20 @@ import type { ScoreOutcome } from "./score";
 // row write (coachUpdates), so tests can assert both the pipeline's
 // step-machine AND what actually got cached for the next run.
 const stepLog: Record<string, any> = {};
+// Flip to false to make the compare-and-swap in commitMemory lose its race.
+let memoryCommitWins = true;
+/**
+ * An UPDATE result that can be awaited directly OR have .returning() called on
+ * it — commitMemory (lib/coach/commit.ts) uses the returned rows to tell "my
+ * write landed" from "someone else's landed first", and a fake that only
+ * supports `await where()` would make every compare-and-swap look like a loss.
+ */
+function updateResult(rows: any[] = [{ id: 1 }]) {
+  const p: any = Promise.resolve(rows);
+  p.returning = async () => rows;
+  return p;
+}
+
 const coachUpdates: any[] = [];
 let coachRow: any;
 
@@ -16,12 +30,13 @@ vi.mock("@/db", () => ({
   db: {
     update: () => ({
       set: (v: any) => ({
-        where: async () => {
+        where: () => {
           if (v.steps) stepLog.last = v.steps;
           if (v.status) stepLog.status = v.status;
           if ("effortScore" in v || "scoreNote" in v || "scoreVerified" in v) stepLog.scoreWrite = v;
           if ("memoryCipher" in v || "memoryRoot" in v) coachUpdates.push(v);
           if ("feelingsCipher" in v) stepLog.feelingsCipherWrite = v.feelingsCipher;
+          return updateResult(memoryCommitWins ? [{ id: 1 }] : []);
         },
       }),
     }),

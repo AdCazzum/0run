@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { eventsEnabled } from "@/lib/features";
 import { and, eq, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
@@ -32,6 +33,11 @@ async function loadEvent(idParam: string) {
  * via /api/fund) and then calls PATCH below to record the tx hash.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Hidden feature (see lib/features.ts): a hidden section must not stay callable.
+  // The POST paths here spend treasury gas and write on-chain, so "not linked in
+  // the UI" is not enough — the endpoint itself has to be closed.
+  if (!eventsEnabled()) return NextResponse.json({ error: "funzione non attiva" }, { status: 404 });
+
   try {
     const { userId, wallet } = await requireUser(req);
     const { id } = await params;
@@ -116,6 +122,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
  * hash on the reserved claims row so the crew list can link to it.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Hidden feature (see lib/features.ts): a hidden section must not stay callable.
+  // The POST paths here spend treasury gas and write on-chain, so "not linked in
+  // the UI" is not enough — the endpoint itself has to be closed.
+  if (!eventsEnabled()) return NextResponse.json({ error: "funzione non attiva" }, { status: 404 });
+
   try {
     const { userId } = await requireUser(req);
     const { id } = await params;

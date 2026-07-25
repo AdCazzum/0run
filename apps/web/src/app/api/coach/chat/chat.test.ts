@@ -64,6 +64,15 @@ const coachCompleteMock = vi.fn(async (_messages: { role: string; content: strin
 }));
 vi.mock("@/lib/inference", () => ({ coachComplete: coachCompleteMock }));
 
+const consultCoachMock = vi.fn();
+vi.mock("@/lib/a2a/consult", () => ({ consultCoach: consultCoachMock }));
+
+const directoryMock = vi.fn(async () => [
+  { tokenId: "1", ensName: "k.0run.eth", displayName: "k.0run.eth", personality: "coach" },
+  { tokenId: "2", ensName: "pedro.0run.eth", displayName: "pedro.0run.eth", personality: "drill-sergeant" },
+]);
+vi.mock("@/lib/coach/directory", () => ({ getCoachDirectory: directoryMock }));
+
 function req(body: any = { message: "how did it go?", userKeyHex: "aa".repeat(32) }) {
   return new Request("http://x/api/coach/chat", {
     method: "POST", headers: { authorization: "Bearer t", "content-type": "application/json" }, body: JSON.stringify(body),
@@ -81,6 +90,13 @@ describe("POST /api/coach/chat", () => {
     state.run = null;
     state.inserted = [];
     coachCompleteMock.mockClear();
+    state.coach.ensName = "k.0run.eth";
+    consultCoachMock.mockReset().mockResolvedValue({
+      ok: true, to: "pedro.0run.eth", question: "Lunghi oltre 30km?",
+      reply: "Progressivi, non oltre il 30% del volume settimanale.",
+      coach: { name: "Pedro", ensName: "pedro.0run.eth", personality: "drill-sergeant" },
+    });
+    directoryMock.mockClear();
   });
 
   it("risponde usando la memoria in cache (mai downloadDecrypted) e salva user+assistant in storico", async () => {
@@ -171,5 +187,86 @@ describe("POST /api/coach/chat", () => {
     const { POST } = await import("./route");
     const res = await POST(req());
     expect(res.status).toBe(401);
+  });
+
+  it("marker <consult> → chiamata A2A, seconda inference, reply finale + blocco consult persistito", async () => {
+    coachCompleteMock
+      .mockResolvedValueOnce({ text: `<consult coach="pedro.0run.eth">Lunghi oltre 30km?</consult>`, verified: null, model: "glm-5.2", path: "router" as const })
+      .mockResolvedValueOnce({ text: "Pedro suggerisce progressivi: proviamo così.", verified: null, model: "glm-5.2", path: "router" as const });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.reply).toBe("Pedro suggerisce progressivi: proviamo così.");
+    expect(body.consult).toMatchObject({ to: "pedro.0run.eth", toTokenId: "2", question: "Lunghi oltre 30km?", coachName: "Pedro" });
+    expect(consultCoachMock).toHaveBeenCalledWith("k.0run.eth", "pedro.0run.eth", "Lunghi oltre 30km?", expect.any(String));
+    // La seconda inference riceve la risposta del collega.
+    const [secondMessages] = coachCompleteMock.mock.calls[1];
+    expect(JSON.stringify(secondMessages)).toContain("Progressivi, non oltre il 30%");
+    // Persistito sul turno assistant.
+    expect(state.inserted[1].consult).toMatchObject({ to: "pedro.0run.eth" });
+  });
+
+  it("consulto fallito → il coach risponde da solo, chat mai rotta, nessun blocco consult", async () => {
+    consultCoachMock.mockResolvedValueOnce({ ok: false, error: "endpoint irraggiungibile" });
+    coachCompleteMock
+      .mockResolvedValueOnce({ text: `<consult coach="pedro.0run.eth">Lunghi?</consult>`, verified: null, model: "glm-5.2", path: "router" as const })
+      .mockResolvedValueOnce({ text: "Non sono riuscito a sentire Pedro, ma ecco il mio parere.", verified: null, model: "glm-5.2", path: "router" as const });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.reply).toContain("il mio parere");
+    expect(body.consult).toBeUndefined();
+  });
+
+  it("nessun marker → una sola inference, flusso invariato", async () => {
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(coachCompleteMock).toHaveBeenCalledTimes(1);
+    expect(consultCoachMock).not.toHaveBeenCalled();
+  });
+
+  it("il roster nel prompt esclude il coach stesso e include i colleghi ENS", async () => {
+    const { POST } = await import("./route");
+    await POST(req());
+    const [sentMessages] = coachCompleteMock.mock.calls[0];
+    const sys = sentMessages[0].content;
+    expect(sys).toContain("pedro.0run.eth");
+    expect(sys).not.toMatch(/- k\.0run\.eth/);
+  });
+
+  it("directory che fallisce → chat normale senza roster, mai un errore", async () => {
+    directoryMock.mockRejectedValueOnce(new Error("RPC down"));
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+  });
+
+  it("coach senza ensName → il marker viene ignorato (nessuna chiamata A2A)", async () => {
+    state.coach.ensName = null;
+    coachCompleteMock.mockResolvedValueOnce({ text: `<consult coach="pedro.0run.eth">Lunghi?</consult>`, verified: null, model: "glm-5.2", path: "router" as const });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(consultCoachMock).not.toHaveBeenCalled();
+  });
+
+  it("marker con coach fuori roster → trattato come nessun marker, marker ripulito dalla reply, nessuna chiamata A2A", async () => {
+    coachCompleteMock.mockResolvedValueOnce({
+      text: `<consult coach="estraneo.0run.eth">Lunghi?</consult> Comunque, aumenta gradualmente il volume.`,
+      verified: null, model: "glm-5.2", path: "router" as const,
+    });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(consultCoachMock).not.toHaveBeenCalled();
+    expect(coachCompleteMock).toHaveBeenCalledTimes(1); // nessuna seconda inference
+    expect(body.reply).not.toContain("<consult");
+    expect(body.consult).toBeUndefined();
   });
 });

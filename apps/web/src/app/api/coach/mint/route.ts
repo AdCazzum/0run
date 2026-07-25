@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { z } from "zod";
-import { PersonalitySchema, initialMemory, explorerTx } from "@0run/shared";
+import { EXPERTISE_MAX, PERSONALITY_STYLE, PersonalitySchema, initialMemory, explorerTx, type Personality } from "@0run/shared";
 import { requireUser } from "@/lib/auth";
 import { encryptJson } from "@/lib/crypto/aes";
 import { serviceKey } from "@/lib/crypto/keys";
@@ -9,7 +9,8 @@ import { checkHumanBacking } from "@/lib/world/gate";
 import { prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { mintCoachOnChain, updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
 import { registerAgent } from "@/lib/erc8004/register";
-import { assignSubname, slugifyLabel } from "@/lib/ens/subname";
+import { assignSubname, setTextRecord, slugifyLabel } from "@/lib/ens/subname";
+import { a2aAccount } from "@/lib/a2a/protocol";
 import { buildAvatarPrompt, generateAvatar } from "@/lib/avatar/generate";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
@@ -23,6 +24,11 @@ const Body = z.object({
   // shorter-than-expected (or wrong) AES key instead of failing loudly.
   // Require exactly 32 bytes of hex up front.
   userKeyHex: z.string().regex(/^[0-9a-f]{64}$/i, "userKeyHex deve essere 64 caratteri esadecimali (32 byte)"),
+  // What this coach knows, in the athlete's own words. Optional, PUBLIC (it
+  // goes into the profile layer a stranger reads and into the ENS description),
+  // and treated as data rather than instructions everywhere it is used — see
+  // lib/coach/prompts.ts.
+  expertise: z.string().max(EXPERTISE_MAX).optional(),
 });
 
 // Chain calls (mint + registry update) are seconds in practice — see
@@ -59,6 +65,52 @@ function uniqueViolation(e: unknown): string | null {
     if (cur.code === "23505") return typeof cur.constraint === "string" ? cur.constraint : "";
   }
   return null;
+}
+
+/** One line about the coach, for the ENSIP-5 `description` record. */
+function coachDescription(name: string, personality: Personality, expertise?: string): string {
+  const brief = expertise?.trim();
+  return [
+    `${name} — ${PERSONALITY_STYLE[personality]}`,
+    // The athlete's own words about what this coach knows: this is what makes
+    // the public directory useful — you can tell which coach is worth asking.
+    brief ? `Knows: ${brief}` : "",
+    "An AI running coach owned by one athlete on 0run; its memory is encrypted and only that athlete can read it.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * Publishes `0run:erc8004` once BOTH halves exist.
+ *
+ * The ENS assignment and the ERC-8004 registration are independent background
+ * steps and either can land first, so both call this and whichever arrives
+ * second does the write. Publishing it completes the chain a stranger can walk
+ * from the name alone: ENS name → iNFT on 0G Galileo → entry in the registry.
+ */
+const publishedAgentIdFor = new Set<string>();
+async function publishAgentIdRecord(userId: number): Promise<void> {
+  try {
+    const [row] = await db
+      .select({ ensName: coaches.ensName, agentId: coaches.agentId })
+      .from(coaches)
+      .where(eq(coaches.userId, userId));
+    if (!row?.ensName || !row.agentId) return; // the other half has not landed yet
+    // Both steps can see both halves at once; write the record once.
+    if (publishedAgentIdFor.has(row.ensName)) return;
+    publishedAgentIdFor.add(row.ensName);
+
+    const result = await setTextRecord(row.ensName, "0run:erc8004", row.agentId);
+    if ("error" in result) {
+      publishedAgentIdFor.delete(row.ensName); // let a later attempt retry
+      console.error("mint: publishing 0run:erc8004 failed", result.error);
+      return;
+    }
+    console.log("mint: 0run:erc8004 published", row.ensName, row.agentId, result.txHash);
+  } catch (e) {
+    console.error("mint: publishing 0run:erc8004 crashed", e);
+  }
 }
 
 type MintOutcome =
@@ -105,7 +157,7 @@ export async function POST(req: Request) {
   }
   const parsed = Body.safeParse(rawBody);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-  const { name, personality, userKeyHex } = parsed.data;
+  const { name, personality, userKeyHex, expertise } = parsed.data;
   const userKey = Buffer.from(userKeyHex, "hex");
 
   // Resolve everything that can fail on configuration BEFORE reserving. serviceKey()
@@ -257,7 +309,7 @@ export async function POST(req: Request) {
     let profPrep: Awaited<ReturnType<typeof prepareEncryptedUpload>>;
     let profileCipher = "";
     try {
-      const { memory, profile } = initialMemory(name, personality);
+      const { memory, profile } = initialMemory(name, personality, expertise);
       memCt = encryptJson(memory, userKey);
       const profCt = encryptJson(profile, svcKey);
       profileCipher = profCt;
@@ -314,6 +366,7 @@ export async function POST(req: Request) {
           }
           console.log("mint: background ERC-8004 registration ok", result.agentId, result.txHash);
           await db.update(coaches).set({ agentId: result.agentId }).where(eq(coaches.userId, user.userId));
+          await publishAgentIdRecord(user.userId);
         })
         .catch((e) => console.error("mint: background ERC-8004 registration crashed", e));
     };
@@ -323,12 +376,26 @@ export async function POST(req: Request) {
     // chain, reachable only over its own (sometimes slow) RPC — so it can
     // never slow down or fail the mint. assignSubname() itself never throws
     // (see lib/ens/subname.ts, same receipt discipline as registerAgent).
-    const startBackgroundEns = (tokenId: string) => {
+    const startBackgroundEns = async (tokenId: string) => {
       const label = slugifyLabel(name, tokenId);
+      // Read the brief as it stands NOW, not as it was in this request: this
+      // step can land minutes later, after the athlete has already edited it,
+      // and writing the mint-time text then would leave the ENS record
+      // contradicting both the coach page and the encrypted memory.
+      const [current] = await db
+        .select({ expertise: coaches.expertise })
+        .from(coaches)
+        .where(eq(coaches.userId, user.userId));
+      const brief = current?.expertise ?? expertise;
       assignSubname(label, user.wallet, {
         tokenId,
         endpoint: `${SITE_URL}/coach/${tokenId}`,
         avatar: `${SITE_URL}/api/coach/${tokenId}/avatar`,
+        a2aEndpoint: `${SITE_URL}/api/coach/${tokenId}/a2a`,
+        signer: a2aAccount()?.address ?? null,
+        url: `${SITE_URL}/coach/${tokenId}`,
+        description: coachDescription(name, personality, brief ?? undefined),
+        personality,
       })
         .then(async (result) => {
           if ("error" in result) {
@@ -337,6 +404,7 @@ export async function POST(req: Request) {
           }
           console.log("mint: background ENS assignment ok", result.name, result.txHash);
           await db.update(coaches).set({ ensName: result.name }).where(eq(coaches.userId, user.userId));
+          await publishAgentIdRecord(user.userId);
         })
         .catch((e) => console.error("mint: background ENS assignment crashed", e));
     };
@@ -371,11 +439,11 @@ export async function POST(req: Request) {
       // Writing tokenId here is also what takes the row out of reach of the stale
       // reclaim above, so it must be part of this single update, never a later one.
       await db.update(coaches)
-        .set({ tokenId, mintTx: txHash, memoryRoot: memPrep.rootHash, profileRoot: profPrep.rootHash, memoryCipher: memCt, profileCipher })
+        .set({ tokenId, mintTx: txHash, memoryRoot: memPrep.rootHash, profileRoot: profPrep.rootHash, memoryCipher: memCt, profileCipher, expertise: expertise?.trim() || null })
         .where(eq(coaches.userId, user.userId));
       startBackgroundUpload();
       startBackgroundRegistration(tokenId);
-      startBackgroundEns(tokenId);
+      void startBackgroundEns(tokenId);
       startBackgroundAvatar(tokenId);
     };
 

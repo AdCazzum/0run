@@ -21,6 +21,9 @@ export async function GET(req: Request) {
       coach: coach && {
         id: coach.id, name: coach.name, personality: coach.personality,
         tokenId: coach.tokenId, mintTx: coach.mintTx, ensName: coach.ensName,
+        // The athlete's own words about what this coach knows — editable from
+        // the coach page, and public wherever the coach appears.
+        expertise: coach.expertise,
         // Coverage only, never a value (docs/superpowers/specs/2026-07-25-
         // health-data-spec.md) — null until /api/health-data has been used.
         healthCoverage: coach.healthWindowDays != null

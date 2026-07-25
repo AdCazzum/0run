@@ -24,14 +24,28 @@ vi.mock("@/lib/auth", () => ({
 
 let coachRow: any;
 const dbUpdates: any[] = [];
+
+/**
+ * An UPDATE result that can be awaited directly OR have .returning() called on
+ * it — commitMemory (lib/coach/commit.ts) uses the returned rows to tell "my
+ * write landed" from "someone else's landed first", and a fake that only
+ * supports `await where()` would make every compare-and-swap look like a loss.
+ */
+function updateResult(rows: any[] = [{ id: 1 }]) {
+  const p: any = Promise.resolve(rows);
+  p.returning = async () => rows;
+  return p;
+}
+
 vi.mock("@/db", () => ({
   db: {
     select: () => ({ from: () => ({ where: async () => (coachRow ? [coachRow] : []) }) }),
     update: () => ({
       set: (v: any) => ({
-        where: async () => {
+        where: () => {
           dbUpdates.push(v);
           if (coachRow) Object.assign(coachRow, v);
+          return updateResult();
         },
       }),
     }),

@@ -7,7 +7,17 @@ export type EnsResolution = { address: string | null; records: Record<string, st
 // on-chain iNFT this name identifies. `agent-endpoint[web]` is the literal
 // ENSIP-26 key string (the "[web]" suffix is part of the key, not bracket
 // syntax the resolver interprets).
-const TEXT_KEYS = ["agent-context", "agent-endpoint[web]", "0run:inft", "avatar"] as const;
+const TEXT_KEYS = [
+  "agent-context",
+  "agent-endpoint[web]",
+  // Machine-callable A2A consult endpoint + the key authorized to sign
+  // messages FROM this agent — together they make ENS the discovery AND
+  // authentication layer for agent-to-agent calls (see lib/a2a/protocol.ts).
+  "agent-endpoint[a2a]",
+  "agent-signer",
+  "0run:inft",
+  "avatar",
+] as const;
 
 // Only the two viem actions this module actually calls — kept narrow so the
 // test-only override below can supply a minimal fake instead of a full

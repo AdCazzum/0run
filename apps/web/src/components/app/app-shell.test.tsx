@@ -30,7 +30,7 @@ describe("AppShell", () => {
 
   it("keeps the phone tab bar, with the active marker on Runs", () => {
     render(<AppShell>content</AppShell>);
-    const bottomBar = screen.getAllByRole("navigation").at(-1)!;
+    const bottomBar = screen.getByRole("navigation", { name: /^app$/i });
     for (const label of ["Runs", "Upload", "Coach"]) {
       expect(bottomBar.textContent).toContain(label);
     }

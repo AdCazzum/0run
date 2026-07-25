@@ -4,12 +4,17 @@ import { usePathname, useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useState } from "react";
 import { usePrivyReady } from "@/app/providers";
+import { forgetUserKey } from "@/lib/client/useUserKey";
+import { eventsEnabled } from "@/lib/features";
 
-const SECTIONS = [
-  { href: "/coaches", label: "Coaches" },
-  { href: "/events", label: "Events" },
-  { href: "/technology", label: "Technology" },
-];
+/** Built per render: a hidden section must not be linked (see lib/features.ts). */
+function sections() {
+  return [
+    { href: "/coaches", label: "Coaches" },
+    ...(eventsEnabled() ? [{ href: "/events", label: "Events" }] : []),
+    { href: "/technology", label: "Technology" },
+  ];
+}
 
 /** The same three destinations the signed-in app shows in its own tab bar. */
 const APP_TABS = [
@@ -52,7 +57,7 @@ export function SiteHeader() {
         </Link>
 
         <nav aria-label="Sections" className="flex flex-wrap items-center gap-x-6 gap-y-1 md:gap-x-10">
-          {SECTIONS.map((section) => {
+          {sections().map((section) => {
             const active = pathname === section.href || pathname.startsWith(`${section.href}/`);
             return (
               <Link
@@ -95,6 +100,10 @@ function SignedInLinks() {
     try {
       await logout();
     } finally {
+      // The data key derived from this person's signature is held in memory for
+      // the session; signing out has to drop it, or the next person to log in
+      // on this tab starts with it still there.
+      forgetUserKey();
       router.push("/");
     }
   }

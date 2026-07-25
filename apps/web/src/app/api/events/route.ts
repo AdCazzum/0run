@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { eventsEnabled } from "@/lib/features";
 import { count, desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
@@ -12,6 +13,11 @@ import { explorerTx } from "@0run/shared";
  * humans claimed this", never "how many people attended".
  */
 export async function GET() {
+  // Hidden feature (see lib/features.ts): a hidden section must not stay callable.
+  // The POST paths here spend treasury gas and write on-chain, so "not linked in
+  // the UI" is not enough — the endpoint itself has to be closed.
+  if (!eventsEnabled()) return NextResponse.json({ error: "funzione non attiva" }, { status: 404 });
+
   const rows = await db.select().from(events).orderBy(desc(events.startsAt));
   const withCounts = await Promise.all(
     rows.map(async (e) => {
@@ -32,6 +38,11 @@ export async function GET() {
  * unsafe for claim().
  */
 export async function POST(req: Request) {
+  // Hidden feature (see lib/features.ts): a hidden section must not stay callable.
+  // The POST paths here spend treasury gas and write on-chain, so "not linked in
+  // the UI" is not enough — the endpoint itself has to be closed.
+  if (!eventsEnabled()) return NextResponse.json({ error: "funzione non attiva" }, { status: 404 });
+
   try {
     const { userId } = await requireUser(req);
     const body = await req.json().catch(() => null);

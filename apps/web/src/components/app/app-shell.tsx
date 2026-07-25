@@ -32,7 +32,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
 
       <nav
-        aria-label="Sections"
+        // Distinct from the header's "Sections": on a phone both are on screen
+        // at once, and two navigation landmarks with the same name are
+        // indistinguishable to anyone browsing by landmark.
+        aria-label="App"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-navy/10 bg-cream/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,78,137,0.06)] backdrop-blur md:hidden"
       >
         <div className="grid grid-cols-3">

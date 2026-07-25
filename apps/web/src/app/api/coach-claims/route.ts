@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { humanCoachEnabled } from "@/lib/features";
 import { eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
@@ -23,6 +24,11 @@ import { coachClaimSignal } from "@/lib/world/signal";
  * verifyWorldProof (strict) → persist.
  */
 export async function POST(req: Request) {
+  // Hidden feature (see lib/features.ts): a hidden section must not stay callable.
+  // The POST paths here spend treasury gas and write on-chain, so "not linked in
+  // the UI" is not enough — the endpoint itself has to be closed.
+  if (!humanCoachEnabled()) return NextResponse.json({ error: "funzione non attiva" }, { status: 404 });
+
   try {
     const { userId, wallet } = await requireUser(req);
 
@@ -59,6 +65,11 @@ export async function POST(req: Request) {
 
 /** Whether the caller has already self-declared as a coach. */
 export async function GET(req: Request) {
+  // Hidden feature (see lib/features.ts): a hidden section must not stay callable.
+  // The POST paths here spend treasury gas and write on-chain, so "not linked in
+  // the UI" is not enough — the endpoint itself has to be closed.
+  if (!humanCoachEnabled()) return NextResponse.json({ error: "funzione non attiva" }, { status: 404 });
+
   try {
     const { userId } = await requireUser(req);
     const [row] = await db.select().from(coachClaims).where(eq(coachClaims.userId, userId));

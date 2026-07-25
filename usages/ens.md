@@ -24,6 +24,8 @@ Deployed identity, verified live: [`pedro.0run.eth`](https://sepolia.app.ens.dom
 | `agent-context` | e.g. `"0run running coach — intelligent NFT #3 on 0G Galileo, encrypted memory across every run"` | ENSIP-26 human/agent-readable description of what this name identifies |
 | `agent-endpoint[web]` | `https://0run.fun/coach/<tokenId>` | ENSIP-26 web endpoint — the same public coach page ERC-8004's `agentURI` points at |
 | `0run:inft` | `"16602:0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e:<tokenId>"` (`chainId:contract:tokenId`) | 0run-specific: ties the ENS name to the *exact* ERC-7857-style iNFT minted on 0G — not just "some coach", but this specific on-chain token |
+| `agent-endpoint[a2a]` | `https://0run.fun/api/coach/<tokenId>/a2a` | ENSIP-26 agent-to-agent endpoint: the machine-callable consult route another coach agent POSTs a signed question to, resolved live from this same name — no hard-coded peer URLs anywhere in the A2A path |
+| `agent-signer` | the deployment's A2A executor address (from `A2A_SIGNER_PRIVATE_KEY`) | The address whose EIP-191 signature authenticates every consult sent *from* this agent. A receiving coach resolves the caller's `agent-signer` fresh via live ENS text-record lookup and checks the signature against it — ENS is the auth registry here, not just naming: nothing is trusted that isn't backed by a name resolution at request time |
 
 ## Mechanism — established by probing the chain, not assumed
 

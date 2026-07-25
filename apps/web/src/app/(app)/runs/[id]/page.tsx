@@ -7,6 +7,7 @@ import { Chat } from "@/components/run/chat";
 import { PipelineSteps } from "@/components/run/pipeline-steps";
 import { ReportView } from "@/components/run/report-view";
 import type { RunRow } from "@/components/run/types";
+import { DeleteRun } from "@/components/run/delete-run";
 import { useUserKey } from "@/lib/client/useUserKey";
 
 // Leaflet touches window at import time, so the map must never be part of the
@@ -53,7 +54,10 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
   // Any failure here (no cipher stored, wrong/missing key, network error)
   // just leaves feelings unset — never a placeholder implying data exists.
   useEffect(() => {
-    if (!run?.id) return;
+    // No note stored → nothing to decrypt, so do not ask the athlete's wallet
+    // for a signature at all. Asking for one the moment a page loads, for
+    // nothing, is how this page ended up showing a wallet error dialog.
+    if (!run?.id || !run.feelingsCipher) return;
     let cancelled = false;
     (async () => {
       try {
@@ -71,7 +75,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       }
     })();
     return () => { cancelled = true; };
-  }, [run?.id, getKeyHex]);
+  }, [run?.id, run?.feelingsCipher, getKeyHex]);
 
   if (!ready) return null;
   if (error) return <Label>{error}</Label>;
@@ -140,6 +144,11 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       </div>
 
       {run.status === "done" && <Chat runId={run.id} />}
+
+      {/* Not offered while the run is still being written: the server refuses
+          it anyway (the pipeline would re-add the run seconds later), and a
+          button that only ever answers "wait" is worse than no button. */}
+      {run.status !== "processing" && <DeleteRun runId={run.id} />}
     </section>
   );
 }

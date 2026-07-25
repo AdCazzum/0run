@@ -6,6 +6,9 @@ import { GALILEO, explorerTx } from "@0run/shared";
 import { db } from "@/db";
 import { claims, events, users } from "@/db/schema";
 import { ClaimWidget } from "./claim-widget";
+import { SiteHeader } from "@/components/landing/site-header";
+import { eventsEnabled } from "@/lib/features";
+import { SiteFooter } from "@/components/landing/site-footer";
 
 // Queries Postgres per request. Without this Next tries to prerender it at build
 // time, which fails in CI (no database) and would freeze the data into the build
@@ -30,6 +33,7 @@ async function loadEvent(idParam: string) {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
+  if (!eventsEnabled()) notFound(); // hidden, not removed — see lib/features.ts
   const data = await loadEvent(id);
   if (!data) return { title: "Event not found — 0run" };
   return { title: `${data.event.name} — 0run events` };
@@ -42,88 +46,92 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
   const { event, crew } = data;
 
   return (
-    <main className="relative mx-auto max-w-[1600px] px-8 py-20 md:px-16 md:py-32">
-      <div className="flex items-center gap-4">
-        <span aria-hidden className="h-px w-12 bg-navy" />
-        <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">{DAY.format(event.startsAt)}</span>
-      </div>
-
-      <div className="mt-8 grid grid-cols-12 gap-x-8 gap-y-12">
-        <div className="col-span-12 md:col-span-7">
-          <h1 className="font-serif text-6xl leading-[0.9] text-navy md:text-7xl">{event.name}</h1>
-          <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
-            Runs until <em className="font-serif italic text-orange">{DAY.format(event.endsAt)}</em>. Anyone could have
-            created this event — a claim proves one unique, World-ID-verified human, never that they were physically here.
-          </p>
-
-          <div className="mt-16">
-            <ClaimWidget dbEventId={event.id} onchainEventId={event.onchainId} />
-          </div>
-        </div>
-
-        <dl className="col-span-12 space-y-8 border-t border-navy pt-8 md:col-span-4 md:col-start-9">
-          <Row label="chain">{GALILEO.name} · {GALILEO.chainId}</Row>
-          <Row label="on-chain event">#{event.onchainId}</Row>
-          {process.env.RUN_EVENTS_ADDRESS && (
-            <Row label="RunEvents contract">
-              <Ext href={`${GALILEO.explorer}/address/${process.env.RUN_EVENTS_ADDRESS}`}>{short(process.env.RUN_EVENTS_ADDRESS)} ↗</Ext>
-            </Row>
-          )}
-          <Row label="created">
-            <Ext href={explorerTx(event.txHash)}>{short(event.txHash)} ↗</Ext>
-          </Row>
-        </dl>
-      </div>
-
-      <section className="mt-24 border-t border-navy/15 pt-16">
+    <>
+      <SiteHeader />
+      <main className="relative mx-auto max-w-[1600px] px-8 py-20 md:px-16 md:py-32">
         <div className="flex items-center gap-4">
-          <span aria-hidden className="h-px w-8 bg-navy/40" />
-          <span className="font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
-            The crew · {crew.length} {crew.length === 1 ? "person" : "people"}
-          </span>
+          <span aria-hidden className="h-px w-12 bg-navy" />
+          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">{DAY.format(event.startsAt)}</span>
         </div>
 
-        {crew.length === 0 ? (
-          <p className="mt-8 max-w-md font-sans text-sm leading-relaxed text-ocean">
-            No one has claimed this event yet.
+        <div className="mt-8 grid grid-cols-12 gap-x-8 gap-y-12">
+          <div className="col-span-12 md:col-span-7">
+            <h1 className="font-serif text-6xl leading-[0.9] text-navy md:text-7xl">{event.name}</h1>
+            <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
+              Runs until <em className="font-serif italic text-orange">{DAY.format(event.endsAt)}</em>. Anyone could have
+              created this event — a claim proves one unique, World-ID-verified human, never that they were physically here.
+            </p>
+
+            <div className="mt-16">
+              <ClaimWidget dbEventId={event.id} onchainEventId={event.onchainId} />
+            </div>
+          </div>
+
+          <dl className="col-span-12 space-y-8 border-t border-navy pt-8 md:col-span-4 md:col-start-9">
+            <Row label="chain">{GALILEO.name} · {GALILEO.chainId}</Row>
+            <Row label="on-chain event">#{event.onchainId}</Row>
+            {process.env.RUN_EVENTS_ADDRESS && (
+              <Row label="RunEvents contract">
+                <Ext href={`${GALILEO.explorer}/address/${process.env.RUN_EVENTS_ADDRESS}`}>{short(process.env.RUN_EVENTS_ADDRESS)} ↗</Ext>
+              </Row>
+            )}
+            <Row label="created">
+              <Ext href={explorerTx(event.txHash)}>{short(event.txHash)} ↗</Ext>
+            </Row>
+          </dl>
+        </div>
+
+        <section className="mt-24 border-t border-navy/15 pt-16">
+          <div className="flex items-center gap-4">
+            <span aria-hidden className="h-px w-8 bg-navy/40" />
+            <span className="font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
+              The crew · {crew.length} {crew.length === 1 ? "person" : "people"}
+            </span>
+          </div>
+
+          {crew.length === 0 ? (
+            <p className="mt-8 max-w-md font-sans text-sm leading-relaxed text-ocean">
+              No one has claimed this event yet.
+            </p>
+          ) : (
+            <ul className="mt-10 grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+              {crew.map((c, i) => (
+                <li key={i} className="group flex flex-col items-start gap-3">
+                  <span
+                    aria-hidden
+                    className="flex aspect-square w-full items-center justify-center border border-navy/20 bg-peach/40 font-serif text-2xl italic text-navy grayscale transition-all duration-[1500ms] group-hover:grayscale-0 group-hover:text-orange"
+                  >
+                    {c.wallet.slice(2, 4).toUpperCase()}
+                  </span>
+                  {c.txHash ? (
+                    <Ext href={explorerTx(c.txHash)}>{short(c.wallet)} ↗</Ext>
+                  ) : (
+                    <span className="font-sans text-xs text-ocean">{short(c.wallet)}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="mt-16 max-w-2xl border-t border-navy/15 pt-8 font-sans text-sm leading-relaxed text-ocean">
+            Honest trust model: anyone can create an event on 0run, so a claim proves{" "}
+            <em className="font-serif italic text-navy">one unique real person per event</em> — verified once, non-transferably,
+            via World ID — not that they were physically present. Treat the crew above as "people who showed up to claim this
+            online", not an attendance log.
           </p>
-        ) : (
-          <ul className="mt-10 grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {crew.map((c, i) => (
-              <li key={i} className="group flex flex-col items-start gap-3">
-                <span
-                  aria-hidden
-                  className="flex aspect-square w-full items-center justify-center border border-navy/20 bg-peach/40 font-serif text-2xl italic text-navy grayscale transition-all duration-[1500ms] group-hover:grayscale-0 group-hover:text-orange"
-                >
-                  {c.wallet.slice(2, 4).toUpperCase()}
-                </span>
-                {c.txHash ? (
-                  <Ext href={explorerTx(c.txHash)}>{short(c.wallet)} ↗</Ext>
-                ) : (
-                  <span className="font-sans text-xs text-ocean">{short(c.wallet)}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        </section>
 
-        <p className="mt-16 max-w-2xl border-t border-navy/15 pt-8 font-sans text-sm leading-relaxed text-ocean">
-          Honest trust model: anyone can create an event on 0run, so a claim proves{" "}
-          <em className="font-serif italic text-navy">one unique real person per event</em> — verified once, non-transferably,
-          via World ID — not that they were physically present. Treat the crew above as "people who showed up to claim this
-          online", not an attendance log.
-        </p>
-      </section>
-
-      <div className="mt-24 border-t border-navy/15 pt-10">
-        <Link
-          href="/events"
-          className="inline-block py-3 font-sans text-xs uppercase tracking-[0.2em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
-        >
-          ← All events
-        </Link>
-      </div>
-    </main>
+        <div className="mt-24 border-t border-navy/15 pt-10">
+          <Link
+            href="/events"
+            className="inline-block py-3 font-sans text-xs uppercase tracking-[0.2em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
+          >
+            ← All events
+          </Link>
+        </div>
+      </main>
+      <SiteFooter />
+    </>
   );
 }
 

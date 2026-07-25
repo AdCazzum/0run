@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { desc, eq } from "drizzle-orm";
-import { CoachProfileSchema, PERSONALITY_STYLE, PersonalitySchema } from "@0run/shared";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
 import { coaches, runs } from "@/db/schema";
-import { canDecrypt, decryptJson } from "@/lib/crypto/aes";
-import { serviceKey } from "@/lib/crypto/keys";
-import { downloadDecrypted } from "@/lib/zerog/storage";
+import { loadConsultProfile } from "@/lib/coach/consult-profile";
 import { systemPrompt } from "@/lib/coach/prompts";
 import { coachComplete } from "@/lib/inference";
 import type { ChatMsg } from "@/lib/inference";
@@ -71,31 +68,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
     // memoryCipher: this is a stranger-facing path and a profile uploaded
     // minutes ago is not downloadable from 0G Storage yet. Falling straight
     // to the network made every consultation of a recently minted coach fail.
-    const svcKey = serviceKey();
-    let profileCipherText: string | null = ownerCoach.profileCipher;
-    if (!profileCipherText) {
-      const dl = await downloadDecrypted(ownerCoach.profileRoot, svcKey, (b) =>
-        canDecrypt(b.toString("utf8"), svcKey),
-      );
-      if (dl.ok) profileCipherText = dl.data.toString("utf8");
-      else console.warn(`ask: profile download for coach ${tokenId} failed`, dl.error);
-    }
-
-    // Last resort: what the coach is, from the public row. Its totals and pace
-    // trend are genuinely unavailable here, so they are empty rather than
-    // invented — the coach still answers in its own voice, which is what the
-    // asker came for, instead of the whole feature returning a 502.
-    const profileSource = ownerCoach.profileCipher ? "cache" : profileCipherText ? "storage" : "public-row";
-    const profile = profileCipherText
-      ? decryptJson(profileCipherText, svcKey, CoachProfileSchema)
-      : {
-          version: 1 as const,
-          name: ownerCoach.name,
-          personality: PersonalitySchema.parse(ownerCoach.personality),
-          totals: { runs: 0, km: 0 },
-          paceTrend: [],
-          styleNotes: PERSONALITY_STYLE[PersonalitySchema.parse(ownerCoach.personality)],
-        };
+    const { profile, profileSource } = await loadConsultProfile(ownerCoach);
 
     // The asker's own latest run, plaintext columns only — never their own
     // encrypted memory either, so this route needs no userKeyHex from them.
