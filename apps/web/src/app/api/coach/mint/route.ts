@@ -5,7 +5,7 @@ import { PersonalitySchema, initialMemory, explorerTx } from "@0run/shared";
 import { requireUser } from "@/lib/auth";
 import { encryptJson } from "@/lib/crypto/aes";
 import { serviceKey } from "@/lib/crypto/keys";
-import { lookupHumanId } from "@/lib/world/agentbook";
+import { checkHumanBacking } from "@/lib/world/gate";
 import { prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { mintCoachOnChain, updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
 import { registerAgent } from "@/lib/erc8004/register";
@@ -37,6 +37,23 @@ const MINT_BUDGET_MS = 90_000;
 // the next attempt reclaims it. Without this, a process kill between reserving and
 // finalizing locked the user out of minting permanently, with no recovery path.
 const STALE_RESERVATION_MS = MINT_BUDGET_MS * 3;
+
+/**
+ * The name of the constraint a unique violation broke, or null if the error is
+ * anything else.
+ *
+ * drizzle wraps driver errors (`DrizzleQueryError`), keeping the pg error — the
+ * only place `code` and `constraint` actually live — on `.cause`, so the chain
+ * has to be walked. Everything that is not code 23505 must fall through and
+ * become a 500: an infrastructure failure that gets translated into a business
+ * answer is worse than a crash, because nobody goes looking for it.
+ */
+function uniqueViolation(e: unknown): string | null {
+  for (let cur: any = e; cur; cur = cur.cause) {
+    if (cur.code === "23505") return typeof cur.constraint === "string" ? cur.constraint : "";
+  }
+  return null;
+}
 
 type MintOutcome =
   | { status: "mint_failed"; error: string }
@@ -96,44 +113,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e.message ?? "configurazione server non valida" }, { status: 500 });
   }
 
-  // Owning an agent requires proving you are a unique human; consulting other
-  // people's coaches does not. The reason is concrete rather than moral: minting
-  // is free and unlimited and WE pay the gas, so without this one person could
-  // mint a hundred agents, flood the public directory and drain the funder.
   // Resolved BEFORE the reservation, like every other thing that can refuse the
   // request — a refusal after reserving is how you strand a row and lock someone
   // out permanently, which has already happened twice in this route's history.
-  const enforceHumanBacking = process.env.REQUIRE_HUMAN_BACKED_MINT !== "0";
-  const lookup = await lookupHumanId(user.wallet);
-  if (lookup.error && enforceHumanBacking) {
-    // "Unknown" is neither a yes nor a no. Saying "you are not human" because a
-    // World Chain RPC blinked would be a lie, and letting it through would make
-    // the gate decorative. Note this only blocks while the gate is ENFORCED: with
-    // the valve open, an unreachable World Chain must not be able to stop minting
-    // — that is the entire purpose of the valve.
-    return NextResponse.json(
-      { error: "impossibile verificare ora il legame con un umano verificato, riprova", detail: lookup.error },
-      { status: 503 },
-    );
-  }
-  if (lookup.error) {
-    console.warn("mint: human-backing lookup unavailable, proceeding because the gate is not enforced", lookup.error);
-  }
-  if (enforceHumanBacking && !lookup.humanId) {
-    return NextResponse.json(
-      {
-        error: "per possedere un coach serve dimostrare di essere una persona reale e unica",
-        reason: "human_backing_required",
-        wallet: user.wallet,
-        // The registration is a human action a service cannot perform for you:
-        // the CLI prints a link to scan in World App and a relay submits it.
-        howTo: `npx @worldcoin/agentkit-cli register ${user.wallet}`,
-        note: "consultare i coach di altri resta libero: il vincolo è sulla proprietà di un agente, non sull'accesso",
-      },
-      { status: 403 },
-    );
-  }
-  const humanId = lookup.humanId;
+  // The gate's scope and its two honest limits live in lib/world/gate.ts.
+  const gate = await checkHumanBacking(user.wallet);
+  if (!gate.ok) return gate.response;
+  const humanId = gate.humanId;
 
   try {
     // Reserve BEFORE minting on-chain. coaches.userId is unique, so this
@@ -157,23 +143,64 @@ export async function POST(req: Request) {
           .onConflictDoNothing({ target: coaches.userId })
           .returning({ id: coaches.id });
         return { rows };
-      } catch (e: any) {
-        const signature = `${e?.code ?? ""} ${e?.constraint ?? ""} ${e?.message ?? ""}`;
-        if (signature.includes("human_id")) return { rows: [], humanConflict: true };
+      } catch (e) {
+        // Identified by the constraint Postgres actually names, NOT by looking
+        // for "human_id" in the message: drizzle rethrows every failure wrapped
+        // in an error whose message is the full SQL text, and that text always
+        // lists the human_id column. A substring test therefore reported a
+        // connection reset, a deadlock or a statement timeout as "you already
+        // own a coach" — a made-up answer to a real outage, with no 5xx anywhere.
+        if (uniqueViolation(e) === "coaches_human_id_unique") return { rows: [], humanConflict: true };
         throw e;
       }
     };
-    const humanAlreadyOwnsOne = () =>
-      NextResponse.json(
+    /**
+     * A human_id conflict means some row already claims this person. That row may
+     * be a real coach — or a dead reservation left by a killed process, in which
+     * case refusing outright locks the person out of EVERY account they own,
+     * forever: the reclaim path below keys on userId, so it never even looks at a
+     * row created by a different account of the same human.
+     *
+     * Reclaiming here is safe in a way it would not be elsewhere: the row that
+     * conflicted belongs to the same human by definition, so this frees the
+     * person's own dead reservation and opens no sybil path.
+     */
+    const resolveHumanConflict = async (): Promise<Reservation | NextResponse> => {
+      const [owner] = humanId
+        ? await db.select().from(coaches).where(eq(coaches.humanId, humanId))
+        : [];
+      const isUnconfirmed = !!owner && owner.tokenId === "" && owner.mintTx === "";
+      const ageMs = owner ? Date.now() - owner.reservedAt.getTime() : 0;
+
+      if (isUnconfirmed && ageMs > STALE_RESERVATION_MS && humanId) {
+        console.warn(`mint: reclaiming stale reservation held by human ${humanId} (age ${ageMs}ms)`);
+        await db.delete(coaches).where(and(eq(coaches.humanId, humanId), eq(coaches.tokenId, "")));
+        const retried = await insertReservation();
+        if (!retried.humanConflict) return retried;
+      }
+
+      if (isUnconfirmed) {
+        return NextResponse.json(
+          { error: "un mint è già in corso per questa persona, riprova tra poco", mintInProgressForMs: ageMs },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json(
         {
           error: "questa persona possiede già un coach: un umano verificato, un solo agente",
           reason: "human_already_owns_a_coach",
+          tokenId: owner?.tokenId,
         },
         { status: 409 },
       );
+    };
 
     let reserved = await insertReservation();
-    if (reserved.humanConflict) return humanAlreadyOwnsOne();
+    if (reserved.humanConflict) {
+      const outcome = await resolveHumanConflict();
+      if (outcome instanceof NextResponse) return outcome;
+      reserved = outcome;
+    }
     if (reserved.rows.length === 0) {
       const [existing] = await db.select().from(coaches).where(eq(coaches.userId, user.userId));
       const isUnconfirmed = !!existing && existing.tokenId === "" && existing.mintTx === "";
@@ -189,7 +216,11 @@ export async function POST(req: Request) {
         console.warn(`mint: reclaiming stale reservation for user ${user.userId} (age ${ageMs}ms)`);
         await db.delete(coaches).where(and(eq(coaches.userId, user.userId), eq(coaches.tokenId, "")));
         reserved = await insertReservation();
-        if (reserved.humanConflict) return humanAlreadyOwnsOne();
+        if (reserved.humanConflict) {
+          const outcome = await resolveHumanConflict();
+          if (outcome instanceof NextResponse) return outcome;
+          reserved = outcome;
+        }
       }
 
       if (reserved.rows.length === 0) {

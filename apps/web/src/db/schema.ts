@@ -39,9 +39,17 @@ export const coaches = pgTable("coaches", {
   // reclaim it instead of the user being locked out of minting forever.
   reservedAt: timestamp("reserved_at").defaultNow().notNull(),
   // The anonymous World AgentBook identifier of the human behind this agent.
-  // UNIQUE is the "one human = one coach" rule itself: enforced by Postgres, so
-  // two concurrent mints from two accounts of the same person cannot both win it
-  // the way application-level checks would let them.
+  // UNIQUE carries the "one human = one coach" rule for the rows that HAVE one:
+  // two concurrent mints from two accounts of the same person cannot both win
+  // it, the way application-level checks would let them.
+  //
+  // What it does NOT cover, because a nullable unique index never collides on
+  // NULL: every coach minted while REQUIRE_HUMAN_BACKED_MINT was off (the
+  // default) or before this column existed. Those rows hold NULL, so their
+  // owner can still mint again from another account. Treat this constraint as
+  // "no verified human appears twice among the mints we verified", never as
+  // "one person can only ever hold one agent" — and note the NFT is
+  // transferable, so ownership can diverge from who minted it in any case.
   humanId: text("human_id").unique(),
   // ERC-8004 IdentityRegistry agentId (see lib/erc8004/register.ts), filled
   // in by a best-effort background step after the mint. Nullable: rows

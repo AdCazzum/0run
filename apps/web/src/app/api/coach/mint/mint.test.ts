@@ -11,6 +11,30 @@ vi.mock("@/lib/world/agentbook", () => ({
   lookupHumanId: vi.fn(async () => ({ humanId: "human_demo" })),
 }));
 
+// Il gate è OPT-IN in produzione (REQUIRE_HUMAN_BACKED_MINT=1): la registrazione
+// avviene in World App, quindi attivo per default bloccherebbe tutti. Questi test
+// lo accendono di default perché è il comportamento con più regole da verificare,
+// e lo spengono esplicitamente nei test della valvola.
+process.env.REQUIRE_HUMAN_BACKED_MINT = "1";
+
+/** True se la condizione drizzle (anche annidata in `and()`) tocca quella colonna. */
+function mentions(cond: any, column: string): boolean {
+  const chunks = cond?.queryChunks;
+  if (!Array.isArray(chunks)) return false;
+  return chunks.some((c: any) => c?.name === column || mentions(c, column));
+}
+/** Primo parametro stringa non vuoto della condizione (l'humanId cercato). */
+function paramValue(cond: any): string | null {
+  for (const c of cond?.queryChunks ?? []) {
+    if (c && typeof c === "object" && typeof (c as any).value === "string" && (c as any).value) {
+      return (c as any).value;
+    }
+    const nested = paramValue(c);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn(async () => ({ userId: 1, wallet: "0x" + "22".repeat(20), privyDid: "did:x" })) }));
 vi.mock("@/lib/zerog/contracts", async (orig) => ({
   ...(await orig()) as object, // keep the real (pure, no env dependency) toBytes32
@@ -62,7 +86,15 @@ vi.mock("@/db", () => ({
     // "mint in flight" from "stale reservation to reclaim".
     select: () => ({
       from: () => ({
-        where: async () => {
+        where: async (cond: any) => {
+          // Il route interroga per userId (il proprio account) oppure per humanId
+          // (la riga che ha fatto scattare il conflitto, che può appartenere a un
+          // ALTRO account della stessa persona): il mock deve distinguerli, o il
+          // recupero di una prenotazione morta non è verificabile.
+          if (mentions(cond, "human_id")) {
+            const humanId = paramValue(cond);
+            return [...dbState.coaches.values()].filter((c: any) => c.humanId === humanId);
+          }
           const row = dbState.coaches.get(1);
           return row ? [row] : [];
         },
@@ -78,8 +110,16 @@ vi.mock("@/db", () => ({
     }),
     delete: () => ({
       // Deletes are scoped to the unconfirmed placeholder (tokenId === ""), so a
-      // confirmed coach must survive an abandon/reclaim attempt.
-      where: async () => {
+      // confirmed coach must survive an abandon/reclaim attempt. The reclaim of a
+      // reservation held by the same PERSON keys on humanId instead of userId.
+      where: async (cond: any) => {
+        if (mentions(cond, "human_id")) {
+          const humanId = paramValue(cond);
+          for (const [key, row] of dbState.coaches) {
+            if (row.humanId === humanId && row.tokenId === "") dbState.coaches.delete(key);
+          }
+          return;
+        }
         const row = dbState.coaches.get(1);
         if (row && row.tokenId === "") dbState.coaches.delete(1);
       },
@@ -204,11 +244,103 @@ describe("POST /api/coach/mint", () => {
     expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
   });
 
-  it("REQUIRE_HUMAN_BACKED_MINT=0 → valvola d'emergenza: minta anche senza human backing", async () => {
+  it("una prenotazione morta della STESSA persona da un altro account viene recuperata, non blocca per sempre", async () => {
+    // Account 99 ha prenotato (placeholder vuoti) ed è morto prima di finalizzare.
+    // Il reclaim per userId non guarda mai questa riga: senza il recupero per
+    // humanId, la persona resta bloccata su OGNI suo account, per sempre.
+    dbState.coaches.set(99, {
+      id: 1, userId: 99, tokenId: "", name: "morta", personality: "coach",
+      memoryRoot: "", profileRoot: "", mintTx: "", humanId: "human_demo",
+      reservedAt: new Date(Date.now() - 10 * 60_000),
+    });
+    const { POST } = await import("./route");
+    expect((await POST(req())).status).toBe(200);
+    expect(dbState.coaches.get(1).humanId).toBe("human_demo");
+  });
+
+  it("prenotazione RECENTE della stessa persona → 409 'in corso', non recuperata", async () => {
+    dbState.coaches.set(99, {
+      id: 1, userId: 99, tokenId: "", name: "in corso", personality: "coach",
+      memoryRoot: "", profileRoot: "", mintTx: "", humanId: "human_demo", reservedAt: new Date(),
+    });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/in corso/);
+    expect(dbState.coaches.has(99)).toBe(true);
+    expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
+  });
+
+  it("un guasto del DB NON diventa 'possiedi già un coach': deve restare un 5xx", async () => {
+    // Come drizzle riporta davvero un errore: wrapper il cui messaggio è l'intera
+    // query (quindi cita SEMPRE human_id) e nessun code/constraint in cima. Un
+    // test di sottostringa qui rispondeva 409 a un reset di connessione.
+    const { db } = await import("@/db");
+    const failing = Object.assign(
+      new Error('Failed query: insert into "coaches" ("user_id", "human_id", ...) values ...'),
+      { cause: Object.assign(new Error("Connection terminated unexpectedly"), { code: "ECONNRESET" }) },
+    );
+    const spy = vi.spyOn(db, "insert").mockImplementation((() => ({
+      values: () => ({ onConflictDoNothing: () => ({ returning: async () => { throw failing; } }) }),
+    })) as any);
+    try {
+      const { POST } = await import("./route");
+      const res = await POST(req());
+      expect(res.status).toBeGreaterThanOrEqual(500);
+      expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("violazione di unicità annidata in un wrapper drizzle → 409, non 500", async () => {
+    const { db } = await import("@/db");
+    const wrapped = Object.assign(new Error("Failed query: insert into \"coaches\" ..."), {
+      cause: Object.assign(new Error("duplicate key value"), {
+        code: "23505",
+        constraint: "coaches_human_id_unique",
+      }),
+    });
+    let firstCall = true;
+    const spy = vi.spyOn(db, "insert").mockImplementation((() => ({
+      values: () => ({
+        onConflictDoNothing: () => ({
+          returning: async () => {
+            if (firstCall) { firstCall = false; throw wrapped; }
+            return [{ id: 1 }];
+          },
+        }),
+      }),
+    })) as any);
+    try {
+      const { POST } = await import("./route");
+      const res = await POST(req());
+      expect(res.status).toBe(409);
+      expect((await res.json()).reason).toBe("human_already_owns_a_coach");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("gate NON applicato (default) → minta senza human backing e NON registra l'humanId", async () => {
     const saved = process.env.REQUIRE_HUMAN_BACKED_MINT;
-    process.env.REQUIRE_HUMAN_BACKED_MINT = "0";
+    delete process.env.REQUIRE_HUMAN_BACKED_MINT;
     const { lookupHumanId } = await import("@/lib/world/agentbook");
     vi.mocked(lookupHumanId).mockResolvedValueOnce({ humanId: null });
+    try {
+      const { POST } = await import("./route");
+      expect((await POST(req())).status).toBe(200);
+      // Niente humanId: registrarlo farebbe applicare il vincolo UNIQUE che
+      // questo flag dice di allentare, e la seconda persona vedrebbe un 409.
+      expect(dbState.coaches.get(1).humanId).toBeNull();
+    } finally {
+      process.env.REQUIRE_HUMAN_BACKED_MINT = saved;
+    }
+  });
+
+  it("gate non applicato + persona già registrata → l'humanId resta fuori dal DB", async () => {
+    const saved = process.env.REQUIRE_HUMAN_BACKED_MINT;
+    delete process.env.REQUIRE_HUMAN_BACKED_MINT;
     try {
       const { POST } = await import("./route");
       expect((await POST(req())).status).toBe(200);
@@ -218,9 +350,9 @@ describe("POST /api/coach/mint", () => {
     }
   });
 
-  it("valvola aperta + AgentBook giù → minta comunque (altrimenti la valvola non serve a nulla)", async () => {
+  it("gate non applicato + AgentBook giù → minta comunque (altrimenti la valvola non serve a nulla)", async () => {
     const saved = process.env.REQUIRE_HUMAN_BACKED_MINT;
-    process.env.REQUIRE_HUMAN_BACKED_MINT = "0";
+    delete process.env.REQUIRE_HUMAN_BACKED_MINT;
     const { lookupHumanId } = await import("@/lib/world/agentbook");
     vi.mocked(lookupHumanId).mockResolvedValueOnce({ humanId: null, error: "RPC down" });
     try {

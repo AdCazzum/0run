@@ -79,6 +79,9 @@ export default function MintPage() {
   const [selected, setSelected] = useState<Personality | null>(null);
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState<string | null>(null);
+  // Actionable detail that came with a refusal (currently the World
+  // human-backing gate): the command to run, and what it does not restrict.
+  const [howTo, setHowTo] = useState<{ howTo: string; note?: string } | null>(null);
   const [result, setResult] = useState<MintResult | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
   const submitting = useRef(false);
@@ -128,7 +131,15 @@ export default function MintPage() {
         throw e;
       }
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "mint failed");
+      if (!res.ok) {
+        // A refusal that comes with instructions must SHOW them. The
+        // human-backing 403 carries `howTo` (a command the person runs to
+        // register in World App) and `note`; rendering only `error` left the
+        // user staring at a dead end they had no way to get past.
+        if (body.howTo) setHowTo({ howTo: body.howTo, note: body.note });
+        throw new Error(body.error ?? "mint failed");
+      }
+      setHowTo(null);
       setResult(body);
       setPhase("success");
     } catch (e: any) {
@@ -207,7 +218,22 @@ export default function MintPage() {
             {error && (
               <div className="mb-6 flex items-start gap-4">
                 <span aria-hidden className="mt-1 h-px w-8 shrink-0 bg-orange md:w-12" />
-                <p className="font-sans text-sm leading-relaxed text-orange">{error}</p>
+                <div>
+                  <p className="font-sans text-sm leading-relaxed text-orange">{error}</p>
+                  {howTo && (
+                    <>
+                      <p className="mt-4 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
+                        Run this, then scan the link in World App
+                      </p>
+                      <code className="mt-2 block overflow-x-auto rounded-xl bg-white/45 px-4 py-3 font-mono text-xs text-navy">
+                        {howTo.howTo}
+                      </code>
+                      {howTo.note && (
+                        <p className="mt-3 font-sans text-sm leading-relaxed text-ocean">{howTo.note}</p>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             )}
             {ready && !authenticated ? (

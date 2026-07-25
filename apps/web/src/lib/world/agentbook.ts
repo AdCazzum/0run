@@ -1,4 +1,5 @@
-import { createAgentBookVerifier } from "@worldcoin/agentkit";
+import { createPublicClient, getAddress, http, toHex } from "viem";
+import { worldchain } from "viem/chains";
 
 /**
  * AgentBook is World's registry binding an agent's wallet to an anonymous
@@ -9,40 +10,100 @@ import { createAgentBookVerifier } from "@worldcoin/agentkit";
  * Registration is a human action, not something a service can do on someone's
  * behalf: `npx @worldcoin/agentkit-cli register <address>` prints a link the
  * person scans in World App, and a relay submits it. Until a wallet has been
- * registered, `lookupHuman` returns null for it.
+ * registered, the registry answers with the zero id for it.
+ *
+ * The read is done here rather than through agentkit-core's
+ * `createAgentBookVerifier().lookupHuman()`, which wraps its whole
+ * `readContract` in `try { … } catch { return null }`. That turns an RPC
+ * outage, a rate limit, or a wrong contract address into the same answer as
+ * "this wallet is not registered" — and this value gates who may own an agent,
+ * so conflating "we could not ask" with "the answer is no" is exactly the
+ * mistake that must not be possible. Reading the contract directly is also the
+ * only way to point at a non-mainnet deployment: that helper accepts a
+ * `contractAddress`, but hardcodes chain id 480 for any `rpcUrl` it is given
+ * without checking that the endpoint really is World Chain mainnet.
  */
 const DEFAULT_WORLD_CHAIN_RPC = "https://worldchain-mainnet.g.alchemy.com/public";
+/** Canonical AgentBook on World Chain mainnet; overridable for other deployments. */
+const DEFAULT_AGENTBOOK_ADDRESS = "0xA23aB2712eA7BBa896930544C7d6636a96b944dA";
+
+// Wall-clock cap for the whole lookup. This runs on the critical path of a
+// mint, BEFORE anything is reserved, so an RPC that accepts connections and
+// then stalls must not add tens of seconds to the request (viem's own default
+// is 10s per attempt with retries, ~40s worst case) — the caller's budget is
+// 90s in total and nginx cuts at 300s. Exceeding this is an "unknown", never a
+// denial.
+const LOOKUP_TIMEOUT_MS = 4_000;
 
 /** Long enough to spare the RPC on a burst of page loads, short enough that a
  *  freshly registered wallet starts working within a demo, not a coffee break. */
 const CACHE_TTL_MS = 60_000;
 
+// Same shape agentkit-core reads (uint256, zero meaning "not registered"), and
+// the id is rendered with viem's toHex exactly as that library does, so a
+// human_id stored by either path is the same string.
+const AGENTBOOK_ABI = [
+  {
+    type: "function",
+    name: "lookupHuman",
+    stateMutability: "view",
+    inputs: [{ name: "agent", type: "address" }],
+    outputs: [{ name: "humanId", type: "uint256" }],
+  },
+] as const;
+
 export type HumanLookup = {
   /** The anonymous human identifier, or null when the wallet is not registered. */
   humanId: string | null;
   /**
-   * Set when the lookup itself could not be completed (RPC down, timeout).
-   * `humanId: null` then means **unknown**, not "not a human" — callers must
-   * never treat unknown as a denial for anything consequential, nor as an
-   * approval. Deny-with-a-reason and allow are both wrong; say "unknown".
+   * Set when the lookup itself could not be completed (RPC down, timeout,
+   * unusable address). `humanId: null` then means **unknown**, not "not a
+   * human" — callers must never treat unknown as a denial for anything
+   * consequential, nor as an approval. Deny-with-a-reason and allow are both
+   * wrong; say "unknown".
+   *
+   * Always a non-empty string when present: an error carrying an empty message
+   * used to make `if (lookup.error)` false, which silently turned "the lookup
+   * failed" back into "not registered".
    */
   error?: string;
 };
 
-type Verifier = { lookupHuman(address: string): Promise<string | null> };
+type Reader = { lookupHuman(address: `0x${string}`): Promise<string | null> };
 
-let verifier: Verifier | null = null;
-const cache = new Map<string, { at: number; humanId: string | null }>();
+let reader: Reader | null = null;
+// Only ACCERTAINED answers land here, and only positive ones (see below).
+const cache = new Map<string, { at: number; humanId: string }>();
 
-function getVerifier(): Verifier {
-  return (verifier ??= createAgentBookVerifier({
-    rpcUrl: process.env.WORLD_CHAIN_RPC ?? DEFAULT_WORLD_CHAIN_RPC,
-  }));
+function realReader(): Reader {
+  const client = createPublicClient({
+    chain: worldchain,
+    // One attempt, short fuse: retries belong to the caller's next request, not
+    // to a request a person is waiting on.
+    transport: http(process.env.WORLD_CHAIN_RPC ?? DEFAULT_WORLD_CHAIN_RPC, {
+      timeout: LOOKUP_TIMEOUT_MS,
+      retryCount: 0,
+    }),
+  });
+  const address = getAddress(process.env.WORLD_AGENTBOOK_ADDRESS ?? DEFAULT_AGENTBOOK_ADDRESS);
+
+  return {
+    async lookupHuman(agent) {
+      const humanId = await client.readContract({
+        address,
+        abi: AGENTBOOK_ABI,
+        functionName: "lookupHuman",
+        args: [agent],
+      });
+      // An unregistered wallet is the zero id, not an error and not a name.
+      return humanId === 0n ? null : toHex(humanId);
+    },
+  };
 }
 
-/** Test seam: inject a fake verifier and drop the cache. */
-export function _setAgentBookForTest(fake: Verifier | null) {
-  verifier = fake;
+/** Test seam: inject a fake reader and drop the cache. */
+export function _setAgentBookForTest(fake: Reader | null) {
+  reader = fake;
   cache.clear();
 }
 
@@ -53,17 +114,46 @@ export function _setAgentBookForTest(fake: Verifier | null) {
  * into a 500 that tells the user nothing.
  */
 export async function lookupHumanId(address: string): Promise<HumanLookup> {
-  const key = address.toLowerCase();
-  const hit = cache.get(key);
+  // Checksummed once, then used for BOTH the cache key and the contract call.
+  // Passing a raw mixed-case string to viem throws on a bad EIP-55 checksum,
+  // and caching that failure under a lowercased key let one malformed caller
+  // mark a wallet unregistered for everyone else.
+  let agent: `0x${string}`;
+  try {
+    agent = getAddress(address);
+  } catch {
+    return { humanId: null, error: `indirizzo non valido: ${address}` };
+  }
+
+  const hit = cache.get(agent);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { humanId: hit.humanId };
 
   try {
-    const humanId = await getVerifier().lookupHuman(address);
-    cache.set(key, { at: Date.now(), humanId: humanId ?? null });
+    const humanId = await withTimeout(
+      (reader ??= realReader()).lookupHuman(agent),
+      LOOKUP_TIMEOUT_MS,
+      "agentbook lookup timeout",
+    );
+    // Only a POSITIVE answer is cached. A negative one is the answer someone is
+    // about to change: they read the 403, register in World App, and come back
+    // within seconds — caching "not registered" for a minute would refuse them
+    // again and read as "the registration failed".
+    if (humanId) cache.set(agent, { at: Date.now(), humanId });
     return { humanId: humanId ?? null };
   } catch (e) {
-    // Deliberately NOT cached: a transient RPC failure must not pin a wallet as
-    // unknown for the next minute.
-    return { humanId: null, error: e instanceof Error ? e.message : "agentbook lookup failed" };
+    // Never cached: a transient RPC failure must not pin a wallet as unknown
+    // for the next minute.
+    const message = e instanceof Error && e.message ? e.message : String(e);
+    return { humanId: null, error: message || "agentbook lookup failed" };
   }
+}
+
+function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer)) as Promise<T>;
 }
