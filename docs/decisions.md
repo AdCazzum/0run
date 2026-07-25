@@ -119,3 +119,48 @@ Script throwaway ha usato `apps/web/src/lib/gpx/parse.ts` per parsare una fixtur
 - Part A (deploy + sanity on-chain): **completo**, tutte le asserzioni passate.
 - Part B (storage round trip reale): **bloccato sulla finalità di rete** dopo ~24 minuti di attesa reale — non un bug del nostro codice, comportamento genuino della rete Galileo/SDK osservato e riconfermato con chiamata diretta. Nessun dato inventato.
 - Part C (inferenza reale): **completo**, JSON valido al primo tentativo, tracciabilità di pagamento (`x_0g_trace`) catturata.
+
+## RunEvents — eventi permissionless con claim co-firmato (Piano B, Task 1)
+
+**Data:** 2026-07-25
+**Contesto:** `contracts/contracts/RunEvents.sol` implementa eventi creabili da chiunque (`createEvent`) e claim gated da World ID: il contratto non verifica la proof on-chain (nessun `WorldIDRouter` su 0G), quindi si fida solo di una firma del `backend` (= treasury) prodotta dopo un cloud-verify server-side. TDD seguito: test scritto per primo, RED confermato (`HH700: Artifact for contract "RunEvents" not found`), poi implementazione, GREEN 4/4, `npx hardhat test` completo 6/6 (i 2 test preesistenti di `OrunAgentNFT`/`CoachRegistry` restano verdi, nessuna regressione).
+
+### Digest co-firmato (deve essere byte-identico Solidity ↔ backend)
+
+Solidity (`RunEvents.claim`):
+```solidity
+bytes32 digest = keccak256(abi.encodePacked(eventId, msg.sender, nullifierHash));
+require(MessageHashUtils.toEthSignedMessageHash(digest).recover(backendSig) == backend, "bad signature");
+```
+
+Backend/off-chain (identico, da usare in Task 2 per l'API `/api/events/:id/claim`):
+```ts
+const digest = ethers.solidityPackedKeccak256(
+  ["uint256", "address", "bytes32"], [eventId, claimant, nullifierHash],
+);
+const backendSig = await treasuryWallet.signMessage(ethers.getBytes(digest));
+```
+
+### Scelta sul deploy: script dedicato invece del `deploy.ts` completo
+
+`contracts/scripts/deploy.ts` è stato esteso per deployare anche `RunEvents(deployer.address)` (per coerenza futura e deploy completi da zero), ma il deploy reale su Galileo per questo task è stato eseguito con uno script separato, `contracts/scripts/deployRunEvents.ts`, che deploya **solo** `RunEvents`. Motivo: `deploy.ts` completo avrebbe ridispiegato anche `OrunAgentNFT` e `CoachRegistry`, già live in produzione — `CoachRegistry` supporta oggi un coach reale a `tokenId 3`; ridispiegarlo lo avrebbe orfanizzato. Gli indirizzi esistenti in `.env` (`AGENT_NFT_ADDRESS`, `COACH_REGISTRY_ADDRESS`) **non sono stati toccati**; è stato aggiunto solo `RUN_EVENTS_ADDRESS`.
+
+### Deploy (rete `zgTestnet`, chainId 16602)
+
+| Contratto | Indirizzo | Explorer |
+|---|---|---|
+| `RunEvents` (`RUN_EVENTS_ADDRESS`) | `0x1D66dd7C7b3f4228f7816Eb266fDCaeF49Cd89bE` | https://chainscan-galileo.0g.ai/address/0x1D66dd7C7b3f4228f7816Eb266fDCaeF49Cd89bE |
+
+- Deploy tx: `0xce5f40e6d1f858259a506280427badcafe518ed7402671fe68acec3fbfb4e0db` (deployer/backend `0x7CAd48f536fC2d23dEa4756d6C601f9C065B6877`, gasUsed 864691, status 1) — https://chainscan-galileo.0g.ai/tx/0xce5f40e6d1f858259a506280427badcafe518ed7402671fe68acec3fbfb4e0db
+- `eth_getCode` confermato non vuoto post-deploy (bytecode length 7302 hex chars, prefix `0x60808060`), tx receipt letto direttamente via `eth_getTransactionReceipt` (block 45876341, status 1).
+
+### Prova reale del round-trip firma (Solidity ↔ backend), non solo mock
+
+Script throwaway in `/tmp` (mai committato), eseguito con la sola treasury key (che coincide col `backend` del contratto, quindi funge sia da creator che da claimant qui):
+
+1. `createEvent("Real claim round-trip test", now-60, now+3600, "ipfs://real-test")` → tx `0x3fafabc6873f9d000e38728232810afcbe954994d3988efd03222afa917a1b64` (status 1), `eventId = 1`.
+2. Nullifier `keccak256("real-claim-nullifier-<timestamp>")`, digest calcolato lato script con `ethers.solidityPackedKeccak256(["uint256","address","bytes32"], [eventId, claimant, nullifierHash])`, firmato con `treasury.signMessage(ethers.getBytes(digest))` — esattamente la formula del test e del `sign()` che il backend userà in Task 2.
+3. `claim(eventId, nullifierHash, backendSig)` → tx `0x6319915f23eaa4cab1c66641002fdde7190df7518dd1170f0ad2f7e7faa8854a` (status 1).
+4. Verifica post-tx: `hasClaimed(1, treasury) == true`, `claimantsOf(1) == [treasury.address]`.
+
+**Esito: SUCCESSO.** Nessun revert `"bad signature"` — il digest Solidity e quello backend combaciano byte-per-byte contro il contratto realmente deployato, non solo nei mock del test Hardhat locale.
