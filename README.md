@@ -101,6 +101,32 @@ The consult protocol is open by design — which is exactly why it needs AgentKi
 3. Ask your coach something outside its specialty → it consults a colleague, discovered and verified via ENS, human-checked via AgentBook — the cross-coach exchange renders in chat with both badges.
 4. Run the rogue agent script → perfect signature, no human → `403 human_backing_required`. Register that wallet with a phone → same request → `200`.
 
+## Prize qualification, point by point
+
+### 0G — submission requirements
+
+- **Project name and short description** — 0run, the AI running coach you own (top of this README).
+- **Contract deployment addresses** — `OrunAgentNFT` [`0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e`](https://chainscan-galileo.0g.ai/address/0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e), `CoachRegistry` [`0x08b3a841393ab09A4C902800C55d24e6AF66945f`](https://chainscan-galileo.0g.ai/address/0x08b3a841393ab09A4C902800C55d24e6AF66945f), `RunEvents` [`0x1D66dd7C7b3f4228f7816Eb266fDCaeF49Cd89bE`](https://chainscan-galileo.0g.ai/address/0x1D66dd7C7b3f4228f7816Eb266fDCaeF49Cd89bE) — all on 0G Galileo (16602).
+- **Public GitHub repo with README + setup** — you are reading it; setup is in [Run it locally](#run-it-locally).
+- **Live demo** — https://0run.fun (a working product, not a repo). **Demo video** — _link here, < 3 min_.
+- **Which 0G features/SDKs** — 0G Chain (contracts above, via ethers), 0G Storage (`@0gfoundation/0g-storage-ts-sdk`, SDK `aes256` encryption + local Merkle roots), 0G Compute (`@0gfoundation/0g-compute-ts-sdk` broker on the direct path + OpenAI-compatible router), ERC-8004 Agentic ID. Full map: [`usages/0g.md`](usages/0g.md).
+- **Proof of 0G Compute inference** — every report carries `x_0g_trace` (provider `0x7DCFe6AE…`, request id, on-chain billing); the effort score additionally returns a per-response TEE attestation via `processResponse` ([`direct.ts:58`](apps/web/src/lib/inference/direct.ts#L58)). Measured evidence: [`docs/0g-reality-check.md`](docs/0g-reality-check.md).
+- **Agentic ID on the 0G explorer** — [tx `0x8b571001…`](https://chainscan-galileo.0g.ai/tx/0x8b571001e567be0bb27c8650fc819b3fcb1e5dea54f9ed1057c634fa6fde9c40) → **agentId 148** on the live IdentityRegistry [`0x8004A818…`](https://chainscan-galileo.0g.ai/address/0x8004A818BFB912233c491871b3d84c89A494BD9e), with `getMetadata(148, "0run.tokenId") = "3"` linking it on-chain to our AgentNFT.
+- **Team** — Ivan Sala · Telegram: `@______` · X: `@______` _(fill in before submitting)_.
+
+### ENS — qualification
+
+- **Not a cosmetic add-on** — ENS is the identity (`pedro.0run.eth`, ENSIP-26 records, `0run:inft` pointer to the exact token), the discoverability (the public directory resolves every coach by name; peers find each other's consult endpoint via `agent-endpoint[a2a]`, [`consult.ts:36`](apps/web/src/lib/a2a/consult.ts#L36)) **and the authentication layer**: an inbound consult is authenticated by resolving the caller's `agent-signer` record fresh and verifying the EIP-191 signature against it — no tokens, no API keys ([`a2a/route.ts:77-85`](apps/web/src/app/api/coach/%5BtokenId%5D/a2a/route.ts#L77-L85)). Remove ENS and the agent network stops working — that is the opposite of cosmetic.
+- **Functional demo, no hard-coded values** — every name, record and resolver address is resolved live on every use; a rejecting RPC yields empty values, never a placeholder — asserted by tests and counter-proven live (`this-definitely-does-not-exist-zzz.0run.eth` → `{address: null, records: {}}`, [`docs/decisions.md`](docs/decisions.md)).
+- **Video / live demo + booth** — live at https://0run.fun (mint a coach → it gets a name → consult flows through it); presenting in person at the ENS booth Sunday morning.
+
+### World — qualification
+
+- **Uses AgentKit in a meaningful way** — AgentKit is the enforcement layer of an open agent-to-agent protocol, not a badge: AgentBook lookup at the protocol boundary ([`gate.ts:123`](apps/web/src/lib/world/gate.ts#L123)), per-human metering through the SDK's `AgentKitStorage` contract implemented as one atomic Postgres statement ([`agentkitStorage.ts`](apps/web/src/lib/world/agentkitStorage.ts)), and the full registration protocol (World ID bridge with AgentBook's own app_id/action/signal + gasless relay) embedded in-product ([`human-backing-widget.tsx`](apps/web/src/components/world/human-backing-widget.tsx)). Full map: [`usages/world.md`](usages/world.md).
+- **Verifies an agent is human-backed** — before answering, a coach resolves the caller's ENS `addr` in AgentBook: no human → `403 human_backing_required`; over the per-human quota (20/day across ALL that human's agents) → `429`; registry unreachable → `503`, never a lie. Enforced in production right now: `GET https://0run.fun/api/coach/3/agent.json` → `humanBacking: { enforced: true }`.
+- **Working end-to-end flow** — register with a phone (QR → World App → relay) → mint (one human, one coach — `human_id` UNIQUE) → your coach consults another and the chat shows `verified via ENS · unique human ✓` → run [`scripts/demo-rogue-agent.ts`](scripts/demo-rogue-agent.ts): a cryptographically perfect agent with no human behind it gets 403; register its wallet and the same request gets 200.
+- **Not the excluded patterns** — no reputation scores anywhere; content generation is incidental (the demo is admission control of an open agent network, a new trust model: ENS answers *who speaks*, AgentBook answers *who stands behind it*); and this is not "perks for agents" — it is mutual admission control, sybil-proof per-human rate limits, and accountability (ban a `humanId` and every agent it backs loses access, present and future).
+
 ## Run it locally
 
 Prerequisites: Node 22, Docker, a funded 0G Galileo wallet, a 0G Compute router API key ([pc.0g.ai](https://pc.0g.ai)), a Privy app ([dashboard.privy.io](https://dashboard.privy.io)).
