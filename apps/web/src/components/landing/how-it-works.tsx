@@ -4,17 +4,17 @@ const STEPS = [
   {
     n: "01",
     title: "Upload your run",
-    body: "Drop a GPX. It is encrypted client-side and stored on 0G decentralized storage — only your wallet can unlock it.",
+    body: "Drag in a run from your watch or phone. It is locked away the moment it arrives — only you can open it.",
   },
   {
     n: "02",
     title: "Meet your coach",
-    body: "An AI coach minted as an intelligent NFT. Analysis runs in a trusted execution environment: nobody reads your data. Not even us.",
+    body: "A personal AI coach reads your run and tells you what it means: where you are improving, what to do next. Nobody else can read your data. Not even us.",
   },
   {
     n: "03",
     title: "Watch it grow",
-    body: "Every run feeds its encrypted memory, hashed on-chain. Switch apps, keep the coach. One day, lend it.",
+    body: "Your coach remembers every run and knows you better each week. And it is yours for good: change apps, change devices — the coach comes with you.",
   },
 ];
 

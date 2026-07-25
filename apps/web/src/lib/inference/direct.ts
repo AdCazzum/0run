@@ -1,11 +1,18 @@
+import { createRequire } from "node:module";
 import { ethers } from "ethers";
 import { GALILEO } from "@0run/shared";
 import type { ChatMsg, CoachCompletion } from "./types";
 
+// The SDK's ESM build is broken — importing it throws "does not provide an export
+// named 'C'" (verified against @0gfoundation/0g-compute-ts-sdk 0.9.0), so the
+// CommonJS build has to be loaded explicitly. Without this the whole direct path
+// fails at runtime, silently falling back to the router.
+const requireCjs = createRequire(import.meta.url);
+
 let brokerPromise: Promise<any> | null = null;
 async function getBroker() {
   return (brokerPromise ??= (async () => {
-    const { createZGComputeNetworkBroker } = await import("@0gfoundation/0g-compute-ts-sdk");
+    const { createZGComputeNetworkBroker } = requireCjs("@0gfoundation/0g-compute-ts-sdk");
     const wallet = new ethers.Wallet(
       process.env.TREASURY_PRIVATE_KEY!,
       new ethers.JsonRpcProvider(process.env.ZG_RPC_URL ?? GALILEO.rpcUrl),

@@ -9,3 +9,10 @@ contracts/cache/
 contracts/typechain-types/
 scripts/fixtures/real/
 .scratch/
+.next/
+out/
+dist/
+*.log
+.DS_Store
+coverage/
+.playwright-mcp/

@@ -6,7 +6,30 @@ import type { ChatMsg, CoachCompletion } from "./types";
 
 export type { ChatMsg, CoachCompletion };
 
+/**
+ * Which path to try first. `direct` pays from the treasury wallet on-chain and is
+ * the only path that returns a per-response TEE attestation (`processResponse`),
+ * which is what lets the UI claim "TEE verified" honestly; `router` reaches larger
+ * models but bills a prepaid account and exposes no per-response attestation.
+ * Whichever is preferred, the other stays as automatic fallback.
+ */
+function preferDirect(): boolean {
+  return process.env.DIRECT_ENABLED === "1" && process.env.INFERENCE_PREFER === "direct";
+}
+
 export async function coachComplete(messages: ChatMsg[]): Promise<CoachCompletion> {
+  if (preferDirect()) {
+    try {
+      return await directComplete(messages);
+    } catch (directErr) {
+      try {
+        return await routerComplete(messages);
+      } catch (routerErr) {
+        throw new Error(`direct=${directErr} · router=${routerErr}`);
+      }
+    }
+  }
+
   try {
     return await routerComplete(messages);
   } catch (routerErr) {

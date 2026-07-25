@@ -22,8 +22,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "0run",
-  description: "The AI running coach you own — private by design, verifiable by default.",
+  title: "0run — The AI running coach you own",
+  description:
+    "A running coach that is only yours. It remembers every run, learns how you train, and keeps your data private — always.",
 };
 
 // The post-login shell behaves like a native app: paint the browser chrome
