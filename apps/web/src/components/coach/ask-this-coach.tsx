@@ -3,6 +3,7 @@ import { useState } from "react";
 import { getAccessToken, usePrivy } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CoachMarkdown } from "@/components/coach/coach-markdown";
 
 type AskReply = { text: string; disclaimer: string };
 
@@ -89,9 +90,9 @@ export function AskThisCoach({ tokenId, coachLabel }: { tokenId: string; coachLa
 
           {reply && (
             <div className="mt-8">
-              <p className="max-w-xl border-l border-navy pl-6 font-serif text-xl leading-relaxed text-navy">
-                {reply.text}
-              </p>
+              <div className="max-w-xl border-l border-navy pl-6">
+                <CoachMarkdown>{reply.text}</CoachMarkdown>
+              </div>
               <p className="mt-3 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">{reply.disclaimer}</p>
             </div>
           )}

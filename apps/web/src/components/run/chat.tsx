@@ -4,6 +4,7 @@ import { getAccessToken } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUserKey } from "@/lib/client/useUserKey";
+import { CoachMarkdown } from "@/components/coach/coach-markdown";
 
 type Turn = { role: "user" | "assistant"; content: string };
 
@@ -61,9 +62,12 @@ export function Chat({ runId }: { runId?: number }) {
               {turn.content}
             </p>
           ) : (
-            <p key={i} className="max-w-xl border-l border-navy pl-6 font-serif text-xl leading-relaxed text-navy">
-              {turn.content}
-            </p>
+            // The coach answers in markdown; the athlete's own message stays plain
+            // text — they typed it, and rendering user input as markdown would let a
+            // stray character reflow the thread.
+            <div key={i} className="max-w-xl border-l border-navy pl-6">
+              <CoachMarkdown>{turn.content}</CoachMarkdown>
+            </div>
           ),
         )}
         {busy && (
