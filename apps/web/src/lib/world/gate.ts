@@ -22,9 +22,9 @@ import { agentkitStorage } from "@/lib/world/agentkitStorage";
  *   so a person can end up holding an agent someone else minted.
  *
  * Enforcement is OPT-IN (`REQUIRE_HUMAN_BACKED_MINT=1`). It used to default to
- * on, which locked every user out of minting: registration happens in World App
- * via `npx @worldcoin/agentkit-cli register <wallet>`, and nothing inside 0run
- * can do it for them. A gate nobody can pass is an outage, not a policy.
+ * on, which locked every user out of minting before the mint page hosted the
+ * in-app flow (HumanBackingWidget: World App on the phone, one QR, a gasless
+ * relay). A gate nobody can pass is an outage, not a policy.
  */
 export function humanBackingEnforced(): boolean {
   return process.env.REQUIRE_HUMAN_BACKED_MINT === "1";

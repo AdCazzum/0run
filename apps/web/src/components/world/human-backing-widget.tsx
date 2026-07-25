@@ -60,22 +60,31 @@ async function authed(path: string, init?: RequestInit) {
 export function HumanBackingWidget() {
   const [state, setState] = useState<State>({ kind: "loading" });
   const cancelled = useRef(false);
-  useEffect(() => () => void (cancelled.current = true), []);
+  useEffect(() => {
+    cancelled.current = false;
+    return () => {
+      cancelled.current = true;
+    };
+  }, []);
 
-  const loadStatus = useCallback(async () => {
+  // `quiet` is for the confirm-loop poll: it only ever transitions state on
+  // a confirmed `registered: true`, never downgrading verifying/submitting/
+  // confirming back to idle/error on a transient miss or a 503.
+  const loadStatus = useCallback(async (opts?: { quiet?: boolean }) => {
+    const quiet = opts?.quiet ?? false;
     try {
       const res = await authed("/api/world/agentbook/status");
       const body = await res.json();
       if (cancelled.current) return null;
       if (!res.ok) {
-        setState({ kind: "error", message: body.error ?? `HTTP ${res.status}` });
+        if (!quiet) setState({ kind: "error", message: body.error ?? `HTTP ${res.status}` });
         return null;
       }
       if (body.registered) setState({ kind: "registered", humanId: body.humanId });
-      else setState({ kind: "idle" });
+      else if (!quiet) setState({ kind: "idle" });
       return body as { registered: boolean; nonce?: string; wallet?: string };
     } catch (e: any) {
-      if (!cancelled.current) setState({ kind: "error", message: e.message ?? String(e) });
+      if (!cancelled.current && !quiet) setState({ kind: "error", message: e.message ?? String(e) });
       return null;
     }
   }, []);
@@ -100,7 +109,7 @@ export function HumanBackingWidget() {
       });
       const uri = bridge.getState().connectorURI;
       if (!uri) throw new Error("bridge World ID non disponibile");
-      setState({ kind: "verifying", uri });
+      if (!cancelled.current) setState({ kind: "verifying", uri });
 
       const deadline = Date.now() + BRIDGE_TIMEOUT_MS;
       let proofResult: { merkle_root: string; nullifier_hash: string; proof: string } | null = null;
@@ -120,7 +129,7 @@ export function HumanBackingWidget() {
       const proof = normalizeProof(proofResult.proof);
       if (!proof) throw new Error("formato proof inatteso da World App");
 
-      setState({ kind: "submitting" });
+      if (!cancelled.current) setState({ kind: "submitting" });
       const reg = await authed("/api/world/agentbook/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -134,10 +143,10 @@ export function HumanBackingWidget() {
       const regBody = await reg.json().catch(() => ({}));
       if (!reg.ok) throw new Error(regBody.error ?? `registrazione fallita (HTTP ${reg.status})`);
 
-      setState({ kind: "confirming" });
+      if (!cancelled.current) setState({ kind: "confirming" });
       const confirmDeadline = Date.now() + CONFIRM_TIMEOUT_MS;
       while (Date.now() < confirmDeadline && !cancelled.current) {
-        const s = await loadStatus();
+        const s = await loadStatus({ quiet: true });
         if (s?.registered) return; // loadStatus already set "registered"
         await new Promise((r) => setTimeout(r, CONFIRM_POLL_MS));
       }
