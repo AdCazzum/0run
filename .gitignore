@@ -2,7 +2,10 @@
 .superpowers/
 node_modules/
 .env
+.env.*
+!.env.example
 contracts/artifacts/
 contracts/cache/
 contracts/typechain-types/
 scripts/fixtures/real/
+.scratch/
