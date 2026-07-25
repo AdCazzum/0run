@@ -6,6 +6,7 @@ import { getAccessToken, usePrivy } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
 import { RunCard } from "@/components/run/run-card";
 import { EnsBadge } from "@/components/coach/ens-badge";
+import { HumanBackingWidget } from "@/components/world/human-backing-widget";
 import type { CoachSummary, RunRow } from "@/components/run/types";
 
 type Feed = { runs: RunRow[]; coach: CoachSummary | null };
@@ -70,6 +71,12 @@ export default function DashboardPage() {
         <div className="mt-8">
           <Link href="/mint"><Button variant="primary" className="w-full md:w-auto">Mint your coach</Button></Link>
         </div>
+        {/* Minting is human-gated: if this person has not proven they are one
+            real human yet, propose it here too — the widget disappears on its
+            own once they are registered. */}
+        <div className="mt-8 max-w-md">
+          <HumanBackingWidget hideWhenRegistered />
+        </div>
       </section>
     );
   }
@@ -107,6 +114,12 @@ export default function DashboardPage() {
           Talk to it ↗
         </Link>
       </header>
+
+      {/* Owners who minted while the human gate was off can still register:
+          renders nothing once they are human-backed. */}
+      <div className="mt-6 max-w-md">
+        <HumanBackingWidget hideWhenRegistered />
+      </div>
 
       {feed.runs.length === 0 ? (
         <div className="mt-8 md:mt-12">
