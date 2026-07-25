@@ -26,7 +26,7 @@ export function parseConsultMarker(text: string): { marker: ConsultMarker | null
  */
 export function buildConsultInstruction(roster: { ensName: string; personality: string | null }[]): string {
   if (roster.length === 0) return "";
-  const lines = roster.map((r) => `- ${r.ensName}${r.personality ? ` (personalità: ${r.personality})` : ""}`);
+  const lines = roster.map((r) => `- ${r.ensName}${r.personality ? ` (personality: ${r.personality})` : ""}`);
   return [
     `You can consult ONE fellow coach when the question clearly benefits from a specialist's second opinion. Available colleagues (ENS identities):`,
     ...lines,

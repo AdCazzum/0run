@@ -37,7 +37,7 @@ export function systemPrompt(profile: CoachProfile): string {
     `You are ${profile.name}, an AI running coach. Personality: ${profile.styleNotes}`,
     `Athlete totals: ${profile.totals.runs} runs, ${profile.totals.km} km. Recent pace trend (sec/km, latest last): ${profile.paceTrend.join(", ") || "none"}.`,
     ...briefLines(profile.expertise),
-    `Stay in character. Be specific with numbers. Answer in the user's language (Italian if unsure).`,
+    `Stay in character. Be specific with numbers. Answer in the user's language — English if unsure, since that is the language of this product.`,
     // Run summaries (current and recent) may carry a free-text "feelings"
     // field the athlete wrote themselves — it can mention pain, illness, or
     // how they slept, which pace/elevation alone can never tell you. Cite it
