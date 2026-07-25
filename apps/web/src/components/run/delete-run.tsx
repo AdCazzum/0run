@@ -14,6 +14,15 @@ import { useUserKey } from "@/lib/client/useUserKey";
  * deleted by anyone, us included. Someone deleting a run deserves to read that
  * before they do it, not after.
  */
+/** Parses a JSON body when there is one; a non-JSON error page is not a crash. */
+async function readJson(res: Response): Promise<any | null> {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export function DeleteRun({ runId }: { runId: number }) {
   const { getKeyHex } = useUserKey();
   const router = useRouter();
@@ -32,8 +41,12 @@ export function DeleteRun({ runId }: { runId: number }) {
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({ userKeyHex }),
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      // Status first, body second. A proxy timeout or a Next error page answers
+      // with HTML, and parsing that before checking res.ok turned a 504 into
+      // "Unexpected token '<'" — shown to the athlete as the reason it failed,
+      // for an operation the server may well have completed.
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(body?.error ?? `the server answered ${res.status}`);
       router.push("/dashboard");
       router.refresh();
     } catch (e) {

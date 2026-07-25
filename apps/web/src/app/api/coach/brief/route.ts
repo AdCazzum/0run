@@ -8,7 +8,8 @@ import { requireUser } from "@/lib/auth";
 import { canDecrypt, decryptJson } from "@/lib/crypto/aes";
 import { downloadDecrypted } from "@/lib/zerog/storage";
 import { updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
-import { parseMemory, persistMemory, setExpertise } from "@/lib/coach/memory";
+import { parseMemory, prepareMemoryCommit, setExpertise } from "@/lib/coach/memory";
+import { commitMemory, MEMORY_CONFLICT } from "@/lib/coach/commit";
 import { setTextRecord } from "@/lib/ens/subname";
 
 const SITE_URL = (process.env.SITE_URL ?? "https://0run.fun").replace(/\/$/, "");
@@ -81,41 +82,59 @@ export async function PATCH(req: Request) {
       memoryCipherText = dl.data.toString("utf8");
     }
 
-    const memory = parseMemory(decryptJson(memoryCipherText, userKey, z.unknown()));
-    const receipts = await persistMemory(setExpertise(memory, brief), userKey);
-    if (!receipts.memory.ok || !receipts.profile.ok) {
-      const reason = !receipts.memory.ok ? receipts.memory.error : (receipts.profile as { error: string }).error;
-      return NextResponse.json({ error: `brief non salvato: ${reason}` }, { status: 502 });
-    }
-
-    // The memory changed, so its on-chain anchor must change with it. Not fatal:
-    // the next run re-anchors.
-    let registryTx: string | null = null;
+    let memory;
     try {
-      registryTx = await updateRegistry(
-        coach.tokenId,
-        toBytes32(receipts.memory.rootHash),
-        toBytes32(receipts.profile.rootHash),
-      );
-    } catch (e) {
-      console.error("brief: on-chain memory anchor failed, will re-anchor on the next run", e);
+      memory = parseMemory(decryptJson(memoryCipherText, userKey, z.unknown()));
+    } catch {
+      // Same convention as /api/health-data: a key that cannot open this
+      // envelope is an honest 400, not a 500 quoting node's crypto internals
+      // back at the athlete inside their own coach page.
+      return NextResponse.json({ error: "impossibile decifrare la memoria (chiave errata?)" }, { status: 400 });
     }
 
-    await db
-      .update(coaches)
-      .set({
-        expertise: brief || null,
-        memoryRoot: receipts.memory.rootHash,
-        profileRoot: receipts.profile.rootHash,
-        memoryCipher: receipts.memoryCipher,
-      })
-      .where(eq(coaches.userId, user.userId));
+    // Hash locally, write, answer — then upload. Waiting for 0G Storage inside
+    // the request can outlast the proxy, and the athlete would read "could not
+    // save" for an edit the server went on to save.
+    const commit = await prepareMemoryCommit(setExpertise(memory, brief), userKey);
+    const committed = await commitMemory(user.userId, coach.memoryRoot, commit, { expertise: brief || null });
+    if (!committed) return NextResponse.json(MEMORY_CONFLICT, { status: 409 });
+
+    commit
+      .upload()
+      .then((receipts) => console.log("brief: background memory upload settled", receipts))
+      .catch((e) => console.error("brief: background memory upload crashed", e));
+
+    // The memory changed, so its on-chain anchor must change with it — or
+    // coaches.memoryRoot, published as this coach's "memory fingerprint",
+    // starts disagreeing with what CoachRegistry holds and anyone who checks
+    // concludes the fingerprint is made up. Reported, never swallowed: unlike a
+    // run, editing a sentence may never be followed by anything that re-anchors.
+    let registryTx: string | null = null;
+    let anchorError: string | null = null;
+    try {
+      registryTx = await updateRegistry(coach.tokenId, toBytes32(commit.memoryRoot), toBytes32(commit.profileRoot));
+    } catch (e) {
+      anchorError = e instanceof Error ? e.message : String(e);
+      console.error("brief: on-chain memory anchor failed", e);
+    }
 
     // ENS last and best-effort: a Sepolia write must never be the reason an
     // athlete cannot edit a sentence about their own coach.
     let ensTx: string | null = null;
     let ensError: string | null = null;
-    if (coach.ensName) {
+    // A coach whose ENS assignment has not landed yet has no name to write to.
+    // Reported as skipped rather than passed over in silence: the record will
+    // keep publishing the old description until the name exists, and the mint's
+    // own background step reads the CURRENT brief when it finally runs.
+    let ensSkipped: string | null = coach.ensName
+      ? null
+      : "questo coach non ha ancora un nome ENS: la description verrà scritta quando il nome viene assegnato";
+    // Re-saving the same words must not send a transaction: the ENS wallet is
+    // shared by every coach on this deployment, and an unbounded, user-repeatable
+    // write is how it runs out of Sepolia ETH and stops assigning names at all.
+    const briefUnchanged = (coach.expertise ?? "") === brief;
+    if (briefUnchanged) ensSkipped = "brief invariato: nessuna scrittura ENS necessaria";
+    if (coach.ensName && !briefUnchanged) {
       const result = await setTextRecord(
         coach.ensName,
         "description",
@@ -132,7 +151,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({
       expertise: brief || null,
       registryTx,
-      ens: coach.ensName ? { name: coach.ensName, txHash: ensTx, error: ensError } : null,
+      anchored: registryTx !== null,
+      anchorError,
+      ens: ensSkipped ? { name: coach.ensName, skipped: ensSkipped } : { name: coach.ensName, txHash: ensTx, error: ensError },
       url: `${SITE_URL}/coach/${coach.tokenId}`,
     });
   } catch (e: any) {

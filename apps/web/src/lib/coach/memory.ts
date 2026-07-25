@@ -4,7 +4,7 @@ import {
 } from "@0run/shared";
 import { encryptJson } from "../crypto/aes";
 import { serviceKey } from "../crypto/keys";
-import { uploadEncrypted } from "../zerog/storage";
+import { prepareEncryptedUpload, uploadEncrypted } from "../zerog/storage";
 
 /**
  * Reads a decrypted memory payload of unknown shape and returns a valid v2
@@ -115,7 +115,7 @@ export function buildProfile(memory: CoachMemory): CoachProfile {
  */
 export async function persistMemory(
   memory: CoachMemory, userKey: Buffer,
-): Promise<{ memory: StorageReceipt; profile: StorageReceipt; memoryCipher: string }> {
+): Promise<{ memory: StorageReceipt; profile: StorageReceipt; memoryCipher: string; profileCipher: string }> {
   const memCt = encryptJson(memory, userKey);
   const profCt = encryptJson(buildProfile(memory), serviceKey());
   const enc = (s: string) => new TextEncoder().encode(s);
@@ -123,5 +123,50 @@ export async function persistMemory(
     uploadEncrypted(enc(memCt), userKey),      // doppia protezione: envelope AES nostro + aes256 SDK
     uploadEncrypted(enc(profCt), serviceKey()),
   ]);
-  return { memory: memReceipt, profile: profReceipt, memoryCipher: memCt };
+  // profileCipher travels with memoryCipher because the two caches must move
+  // together: the profile envelope is what a STRANGER consulting this coach
+  // reads (api/coach/[tokenId]/ask), so leaving it behind means an edited brief
+  // or a deleted run never reaches them — the coach keeps answering from its
+  // mint-time self.
+  return { memory: memReceipt, profile: profReceipt, memoryCipher: memCt, profileCipher: profCt };
+}
+
+/**
+ * Commits a rewritten memory the way the mint route does: hash locally now,
+ * upload to 0G Storage afterwards.
+ *
+ * `persistMemory` above waits for both uploads — 3 attempts x 120s per layer in
+ * the worst case, which is longer than nginx will hold a proxied request open.
+ * That is fine for the run pipeline (already a background job) and wrong for a
+ * request a person is waiting on: they get a dead connection while the server
+ * quietly finishes the work. So the roots are computed locally (the merkle hash
+ * is over the encrypted stream, no network involved), the caller writes them and
+ * answers, and `upload()` runs after the response.
+ */
+export async function prepareMemoryCommit(
+  memory: CoachMemory, userKey: Buffer,
+): Promise<{
+  memoryRoot: string;
+  profileRoot: string;
+  memoryCipher: string;
+  profileCipher: string;
+  upload: () => Promise<{ memory: StorageReceipt; profile: StorageReceipt }>;
+}> {
+  const memCt = encryptJson(memory, userKey);
+  const profCt = encryptJson(buildProfile(memory), serviceKey());
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const [mem, prof] = await Promise.all([
+    prepareEncryptedUpload(enc(memCt), userKey),
+    prepareEncryptedUpload(enc(profCt), serviceKey()),
+  ]);
+  return {
+    memoryRoot: mem.rootHash,
+    profileRoot: prof.rootHash,
+    memoryCipher: memCt,
+    profileCipher: profCt,
+    upload: async () => {
+      const [memory, profile] = await Promise.all([mem.upload(), prof.upload()]);
+      return { memory, profile };
+    },
+  };
 }

@@ -376,8 +376,17 @@ export async function POST(req: Request) {
     // chain, reachable only over its own (sometimes slow) RPC — so it can
     // never slow down or fail the mint. assignSubname() itself never throws
     // (see lib/ens/subname.ts, same receipt discipline as registerAgent).
-    const startBackgroundEns = (tokenId: string) => {
+    const startBackgroundEns = async (tokenId: string) => {
       const label = slugifyLabel(name, tokenId);
+      // Read the brief as it stands NOW, not as it was in this request: this
+      // step can land minutes later, after the athlete has already edited it,
+      // and writing the mint-time text then would leave the ENS record
+      // contradicting both the coach page and the encrypted memory.
+      const [current] = await db
+        .select({ expertise: coaches.expertise })
+        .from(coaches)
+        .where(eq(coaches.userId, user.userId));
+      const brief = current?.expertise ?? expertise;
       assignSubname(label, user.wallet, {
         tokenId,
         endpoint: `${SITE_URL}/coach/${tokenId}`,
@@ -385,7 +394,7 @@ export async function POST(req: Request) {
         a2aEndpoint: `${SITE_URL}/api/coach/${tokenId}/a2a`,
         signer: a2aAccount()?.address ?? null,
         url: `${SITE_URL}/coach/${tokenId}`,
-        description: coachDescription(name, personality, expertise),
+        description: coachDescription(name, personality, brief ?? undefined),
         personality,
       })
         .then(async (result) => {
@@ -434,7 +443,7 @@ export async function POST(req: Request) {
         .where(eq(coaches.userId, user.userId));
       startBackgroundUpload();
       startBackgroundRegistration(tokenId);
-      startBackgroundEns(tokenId);
+      void startBackgroundEns(tokenId);
       startBackgroundAvatar(tokenId);
     };
 

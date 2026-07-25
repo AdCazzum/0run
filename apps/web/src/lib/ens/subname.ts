@@ -86,6 +86,30 @@ const RESOLVER_ABI = [
   "function multicall(bytes[] calldata data) returns (bytes[] memory)",
 ];
 
+/**
+ * Every ENS write on this deployment goes through ONE wallet, and each call
+ * built its own `ethers.Wallet`, whose nonce comes from the provider's pending
+ * count. Two writes in flight at once — a mint assigning a subname while
+ * someone saves a brief — therefore claimed the same nonce, and the loser was
+ * rejected outright. The mint's assignment is fire-and-forget and never
+ * retries, so the cost of losing that race was a coach left without an ENS
+ * identity forever.
+ *
+ * Serializing them is enough here because this runs as a single container: one
+ * writer at a time, in arrival order. A second instance would need a real
+ * nonce manager, and this comment is the marker for that day.
+ */
+let ensWriteQueue: Promise<unknown> = Promise.resolve();
+function serializeEnsWrite<T>(work: () => Promise<T>): Promise<T> {
+  const next = ensWriteQueue.then(work, work);
+  // Keep the chain alive whatever happens to this link.
+  ensWriteQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
 function client() {
   const rpcUrl = process.env.ENS_SEPOLIA_RPC;
   if (!rpcUrl) throw new Error("ENS_SEPOLIA_RPC non configurato");
@@ -157,8 +181,10 @@ export async function assignSubname(label: string, owner: string, records: Assig
       iface.encodeFunctionData("setText", [node, "0run:personality", records.personality]),
     ];
 
-    const tx = await resolver.multicall(calls);
-    const receipt = await tx.wait();
+    const receipt = await serializeEnsWrite(async () => {
+      const tx = await resolver.multicall(calls);
+      return tx.wait();
+    });
     return { name: fullName, txHash: receipt.hash };
   } catch (e: any) {
     return { error: e.message ?? String(e) };
@@ -206,8 +232,10 @@ export async function setTextRecords(fullName: string, texts: Record<string, str
     const calls = Object.entries(texts).map(([key, value]) =>
       resolver.interface.encodeFunctionData("setText", [node, key, value]),
     );
-    const tx = await resolver.multicall(calls);
-    const receipt = await tx.wait();
+    const receipt = await serializeEnsWrite(async () => {
+      const tx = await resolver.multicall(calls);
+      return tx.wait();
+    });
     return { name: fullName, txHash: receipt.hash };
   } catch (e: any) {
     return { error: e.message ?? String(e) };

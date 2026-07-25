@@ -23,14 +23,27 @@ export default function CoachPage() {
   const [coach, setCoach] = useState<CoachSummary | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  /**
+   * `silent` is for refreshes that follow something that already succeeded. A
+   * failed refresh after a saved brief used to set the page-level error, which
+   * replaces the ENTIRE coach view — header, brief and the "Saved." line — with
+   * one grey sentence: a completed save, reported as a total failure, which
+   * invites the athlete to save again and pay for a second memory upload, a
+   * second chain tx and a second ENS write for text that never changed.
+   */
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
       const token = await getAccessToken();
       const res = await fetch("/api/runs", { headers: { authorization: `Bearer ${token}` } });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
       setCoach(body.coach ?? null);
+      if (silent) setError(null);
     } catch (e) {
+      if (silent) {
+        console.warn("coach: refresh after save failed, keeping what is on screen", e);
+        return;
+      }
       setError(e instanceof Error ? e.message : "could not load your coach");
     }
   }, []);
@@ -94,7 +107,7 @@ export default function CoachPage() {
           and it is editable here because an athlete's idea of what their coach
           should know changes as they train. */}
       <div className="mt-8 max-w-md border-b border-navy/15 pb-8">
-        <CoachBrief expertise={coach.expertise} onSaved={load} />
+        <CoachBrief expertise={coach.expertise} onSaved={() => void load({ silent: true })} />
       </div>
 
       <Chat />

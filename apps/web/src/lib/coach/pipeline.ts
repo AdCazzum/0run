@@ -9,6 +9,7 @@ import { downloadDecrypted, uploadEncrypted } from "../zerog/storage";
 import { toBytes32, updateRegistry } from "../zerog/contracts";
 import { completeJson } from "../inference";
 import { appendRun, buildProfile, parseMemory, persistMemory } from "./memory";
+import { commitMemory } from "./commit";
 import { buildReportMessages, ReportSchema } from "./prompts";
 import { scoreRun } from "./score";
 
@@ -109,11 +110,20 @@ export async function processRun(
     });
     const receipts = await persistMemory(updated, userKey);
     if (!receipts.memory.ok || !receipts.profile.ok) return fail("update_memory", "persist fallita");
-    await db.update(coaches).set({
+    // Compare-and-swap on the root we started from: a brief edit or a run
+    // deletion can land while this upload is in flight, and a blind write would
+    // silently throw their change away (or theirs would throw this run away).
+    // Losing the race here is not fatal — the run's own row is intact and the
+    // step says why — but it must never pass for success.
+    const committed = await commitMemory(coach.userId, coach.memoryRoot, {
       memoryRoot: receipts.memory.rootHash,
       profileRoot: receipts.profile.rootHash,
-      memoryCipher: receipts.memoryCipher, // refresh the cache in the same write, see comment above
-    }).where(eq(coaches.id, coach.id));
+      memoryCipher: receipts.memoryCipher,
+      profileCipher: receipts.profileCipher,
+    });
+    if (!committed) {
+      return fail("update_memory", "la memoria del coach è cambiata durante l'elaborazione (altra modifica in corso): ricarica la corsa e riprova");
+    }
     await mark("update_memory", { status: "done", detail: receipts.memory.rootHash });
 
     // 4. hash on-chain

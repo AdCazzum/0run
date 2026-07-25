@@ -16,9 +16,22 @@ import { useUserKey } from "@/lib/client/useUserKey";
  * ends up in public: this is the same sentence a stranger reads when deciding
  * whether to consult this coach.
  */
+/** Parses a JSON body when there is one; a non-JSON error page is not a crash. */
+async function readJson(res: Response): Promise<any | null> {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export function CoachBrief({ expertise, onSaved }: { expertise: string | null; onSaved?: () => void }) {
   const { getKeyHex } = useUserKey();
   const [editing, setEditing] = useState(false);
+  // What is on screen after a save, independent of the parent's refresh: the
+  // save already succeeded, so the text must not disappear because a later
+  // GET failed.
+  const [current, setCurrent] = useState<string | null>(expertise);
   const [draft, setDraft] = useState(expertise ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,14 +48,21 @@ export function CoachBrief({ expertise, onSaved }: { expertise: string | null; o
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({ expertise: draft, userKeyHex }),
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      // Status first, body second. A proxy timeout or a Next error page answers
+      // with HTML, and parsing that before checking res.ok turned a 504 into
+      // "Unexpected token '<'" — shown to the athlete as the reason it failed,
+      // for an operation the server may well have completed.
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(body?.error ?? `the server answered ${res.status}`);
       // Honest about the one part that can fail on its own: the memory and the
       // pages are updated, the ENS record is a write to another chain.
+      setCurrent(body.expertise ?? null);
       setSaved(
-        body.ens?.error
-          ? "Saved. Its ENS description did not update this time — it will next time you edit."
-          : "Saved.",
+        body.anchored === false
+          ? "Saved. The on-chain anchor did not move this time — your next run re-anchors it."
+          : body.ens?.error
+            ? "Saved. Its ENS description did not update this time — it will next time you edit."
+            : "Saved.",
       );
       setEditing(false);
       onSaved?.();
@@ -60,17 +80,17 @@ export function CoachBrief({ expertise, onSaved }: { expertise: string | null; o
           <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">Knows</span>
           <button
             onClick={() => {
-              setDraft(expertise ?? "");
+              setDraft(current ?? "");
               setSaved(null);
               setEditing(true);
             }}
             className="font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
           >
-            {expertise ? "Edit" : "Add"}
+            {current ? "Edit" : "Add"}
           </button>
         </div>
         <p className="mt-2 font-sans text-sm leading-relaxed text-navy">
-          {expertise ?? (
+          {current ?? (
             <span className="text-ocean">
               Nothing yet — say what this coach knows and it will coach you accordingly.
             </span>

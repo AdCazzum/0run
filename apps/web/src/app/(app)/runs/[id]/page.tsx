@@ -145,7 +145,10 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
 
       {run.status === "done" && <Chat runId={run.id} />}
 
-      <DeleteRun runId={run.id} />
+      {/* Not offered while the run is still being written: the server refuses
+          it anyway (the pipeline would re-add the run seconds later), and a
+          button that only ever answers "wait" is worse than no button. */}
+      {run.status !== "processing" && <DeleteRun runId={run.id} />}
     </section>
   );
 }
