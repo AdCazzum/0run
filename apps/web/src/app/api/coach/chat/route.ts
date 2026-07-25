@@ -140,16 +140,16 @@ export async function POST(req: Request) {
     // exactly like "no marker": strip it, no A2A call. Never resolve/consult
     // an ENS name we didn't ourselves offer as a colleague.
     if (marker && coach.ensName && roster.some((r) => r.ensName === marker.coach)) {
-      const contextSummary = pinnedRun ? `L'ultimo run del mio atleta: ${JSON.stringify(pinnedRun.stats)}` : "";
+      const contextSummary = pinnedRun ? `My athlete's latest run: ${JSON.stringify(pinnedRun.stats)}` : "";
       const result = await consultCoach(coach.ensName, marker.coach, marker.question, contextSummary);
       const followUp: ChatMsg = result.ok
         ? {
             role: "user",
-            content: `[risultato del consulto] ${result.coach.name} (${result.coach.ensName}) ha risposto: «${result.reply}». Ora rispondi al tuo atleta integrando e citando il parere del collega. Non usare più il marker <consult>.`,
+            content: `[consult result] ${result.coach.name} (${result.coach.ensName}) answered: "${result.reply}". Now answer your athlete, integrating and crediting your colleague's opinion. Do not use the <consult> marker again.`,
           }
         : {
             role: "user",
-            content: `[risultato del consulto] Il collega ${marker.coach} non era raggiungibile (${result.error}). Rispondi al tuo atleta da solo, dicendo che hai provato a consultarlo. Non usare più il marker <consult>.`,
+            content: `[consult result] Your colleague ${marker.coach} was unreachable (${result.error}). Answer your athlete on your own, mentioning that you tried to consult them. Do not use the <consult> marker again.`,
           };
       const second = await coachComplete([...messages, { role: "assistant", content: completion.text }, followUp]);
       // Never leak a stray marker to the athlete, whatever the model did.
