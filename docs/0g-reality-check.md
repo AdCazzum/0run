@@ -29,7 +29,7 @@ Questo è il vincolo che ha cambiato l'architettura.
 | Fatto misurato | Numero |
 |---|---|
 | Upload cifrato di un GPX reale (658 KB) | tx confermata, merkle root `0x0c173a56dc7257e398296c1d1e1636d6762e6fd024e0d32984145481e0d33a3b` |
-| Disponibilità del file appena caricato | **> 16 minuti e ancora `{"code":101,"message":"File not found"}`** |
+| Disponibilità del file appena caricato | **> 22 minuti di polling continuo e ancora `{"code":101,"message":"File not found"}`** (misurato dal controller, campione ogni 20s) |
 | Risposta dei nodi storage durante il polling | `Log entry is available, but not finalized yet` (`finalized: false`) |
 | Caso peggiore osservato su un secondo upload | `indexer.upload()` **non è mai ritornato in ~24 minuti** — nessun timeout interno all'SDK, mentre la tx on-chain era andata a buon fine (nonce +2, −0.002476 OG) |
 
