@@ -141,6 +141,12 @@ export function CoachChase() {
     };
     const onTouchStart = (e: TouchEvent) => {
       e.preventDefault();
+      // On the dead screen, the copy says "tap to run again" — any tap
+      // restarts, regardless of where on the canvas it lands.
+      if (stateRef.current.status === "dead") {
+        inputRef.current.jumpQueued = true;
+        return;
+      }
       const rect = canvas.getBoundingClientRect();
       const y = e.touches[0].clientY - rect.top;
       // lower ~40% of the canvas = duck (held), everything above = jump
@@ -154,6 +160,10 @@ export function CoachChase() {
     window.addEventListener("keyup", onKeyUp);
     canvas.addEventListener("touchstart", onTouchStart, { passive: false });
     canvas.addEventListener("touchend", onTouchEnd);
+    // touchcancel fires when the OS interrupts a touch (notification, edge
+    // gesture) — without clearing duck here too, the runner gets stuck
+    // ducked and can never jump again.
+    canvas.addEventListener("touchcancel", onTouchEnd);
 
     let raf = 0;
     let last = performance.now();
@@ -181,6 +191,7 @@ export function CoachChase() {
       window.removeEventListener("keyup", onKeyUp);
       canvas.removeEventListener("touchstart", onTouchStart);
       canvas.removeEventListener("touchend", onTouchEnd);
+      canvas.removeEventListener("touchcancel", onTouchEnd);
     };
   }, [active]);
 
