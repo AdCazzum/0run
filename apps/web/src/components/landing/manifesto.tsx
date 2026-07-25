@@ -9,7 +9,7 @@ export function Manifesto() {
               Manifesto
             </span>
           </div>
-          <h2 className="mt-6 font-serif text-4xl leading-[0.95] text-navy md:text-5xl">
+          <h2 className="mt-6 font-serif text-5xl leading-[0.95] text-navy md:text-7xl">
             Your data.
             <br />
             Your <em className="italic text-orange">coach.</em>

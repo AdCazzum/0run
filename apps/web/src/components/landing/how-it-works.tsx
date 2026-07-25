@@ -1,3 +1,5 @@
+import { Card } from "@/components/ui/card";
+
 const STEPS = [
   {
     n: "01",
@@ -28,7 +30,7 @@ export function HowItWorks() {
                 How it works
               </span>
             </div>
-            <h2 className="mt-6 font-serif text-4xl leading-[0.95] text-navy md:text-5xl">
+            <h2 className="mt-6 font-serif text-5xl leading-[0.95] text-navy md:text-7xl">
               Three steps to a coach that is <em className="italic text-orange">yours.</em>
             </h2>
           </div>
@@ -36,14 +38,11 @@ export function HowItWorks() {
       </div>
       <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-12 px-8 py-16 md:grid-cols-3 md:px-16 md:pb-32 md:pt-16">
         {STEPS.map((s) => (
-          <div
-            key={s.n}
-            className="border-t border-navy p-8 transition-colors duration-700 hover:bg-peach/20 md:p-12"
-          >
+          <Card key={s.n}>
             <span className="font-serif text-2xl italic text-orange">{s.n}</span>
             <h3 className="mt-6 font-serif text-3xl text-navy">{s.title}</h3>
             <p className="mt-4 font-sans text-base leading-relaxed text-navy">{s.body}</p>
-          </div>
+          </Card>
         ))}
       </div>
     </section>

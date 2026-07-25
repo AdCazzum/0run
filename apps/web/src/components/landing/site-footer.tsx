@@ -22,7 +22,7 @@ export function SiteFooter() {
               href={l.href}
               target="_blank"
               rel="noreferrer"
-              className="font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
+              className="inline-block py-3 font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
             >
               {l.label}
             </a>

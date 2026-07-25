@@ -7,7 +7,7 @@ const STACK = [
   {
     label: "Compute TEE",
     title: "0G Compute",
-    body: "Coach inference runs inside a trusted execution environment on 0G Compute — attested and on-chain billed. A typical analysis returns in about 20 seconds.",
+    body: "Coach inference runs on 0G Compute — about 20 seconds measured latency, billed on-chain against a provider address and request ID. We select for TEE-attested providers, so verification is built into the model, not just claimed after the fact.",
   },
   {
     label: "Agentic ID",
