@@ -16,3 +16,7 @@ dist/
 .DS_Store
 coverage/
 .playwright-mcp/
+
+# Screenshots taken while checking a page in the browser
+*.png
+!apps/web/**/*.png
