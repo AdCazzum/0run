@@ -40,8 +40,9 @@ export function Hero() {
 
       <div className="col-span-12 mt-2 md:col-span-4 md:col-start-9 md:mt-0">
         <p className="max-w-md font-sans text-lg leading-relaxed text-navy">
-          Your runs, encrypted on decentralized storage. Your coach, an intelligent NFT whose
-          memory grows with every kilometre. Private by design, verifiable by default.
+          A coach that is only yours. It remembers every run, learns how you train, and gets
+          sharper with every kilometre. Your data stays private — nobody else can read it. Not
+          even us.
         </p>
         <div className="mt-10 flex flex-wrap gap-6">
           <Button variant="primary" onClick={handleStart}>

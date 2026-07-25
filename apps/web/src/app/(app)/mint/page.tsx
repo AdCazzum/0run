@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
 import { PERSONALITY_STYLE, type Personality } from "@0run/shared";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,7 @@ export default function MintPage() {
   const { ready, authenticated, getAccessToken } = usePrivy();
   const { login } = useLogin();
   const { getKeyHex } = useUserKey();
+  const router = useRouter();
 
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<Personality | null>(null);
@@ -138,24 +140,16 @@ export default function MintPage() {
   }
 
   return (
-    <section className="relative mx-auto grid max-w-[1600px] grid-cols-12 gap-y-16 px-8 pb-32 pt-40 md:px-16">
-      <span
-        aria-hidden
-        className="absolute right-8 top-32 hidden font-sans text-[10px] uppercase tracking-[0.3em] text-ocean lg:block md:right-16"
-        style={{ writingMode: "vertical-rl" }}
-      >
-        0run / Vol. 01 — Onboarding
-      </span>
-
-      <div className="col-span-12 md:col-span-9 md:col-start-2">
-        <div className="mb-8 flex items-center gap-4">
-          <span aria-hidden className="h-px w-12 bg-navy" />
+    <section className="flex flex-col gap-10 md:gap-14">
+      <div>
+        <div className="mb-6 flex items-center gap-4">
+          <span aria-hidden className="h-px w-8 bg-navy md:w-12" />
           <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Step one of one</span>
         </div>
-        <h1 className="font-serif text-5xl leading-[0.9] tracking-tight text-navy md:text-7xl">
+        <h1 className="font-serif text-4xl leading-[0.95] tracking-tight text-navy md:text-6xl">
           Choose your <em className="italic text-orange">Coach</em>.
         </h1>
-        <p className="mt-6 max-w-xl font-sans text-lg leading-relaxed text-navy">
+        <p className="mt-5 max-w-xl font-sans text-base leading-relaxed text-navy md:text-lg">
           Your coach is an intelligent NFT: a personality you pick, a memory encrypted on 0G Storage,
           an identity minted on 0G Galileo. It only ever grows from here.
         </p>
@@ -163,7 +157,7 @@ export default function MintPage() {
 
       {phase === "form" && (
         <>
-          <div className="col-span-12 md:col-span-5 md:col-start-2">
+          <div className="max-w-md">
             <label htmlFor="coach-name" className="mb-3 block font-sans text-xs uppercase tracking-[0.3em] text-ocean">
               Name your coach
             </label>
@@ -176,12 +170,12 @@ export default function MintPage() {
             />
           </div>
 
-          <div className="col-span-12">
-            <div className="mb-8 flex items-center gap-4">
-              <span aria-hidden className="h-px w-12 bg-navy" />
+          <div>
+            <div className="mb-6 flex items-center gap-4">
+              <span aria-hidden className="h-px w-8 bg-navy md:w-12" />
               <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Choose a personality</span>
             </div>
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-8">
               {PERSONALITIES.map((p) => {
                 const isSelected = selected === p.id;
                 return (
@@ -200,8 +194,8 @@ export default function MintPage() {
                     className="cursor-pointer text-left outline-none focus-visible:ring-1 focus-visible:ring-orange focus-visible:ring-offset-2"
                   >
                     <Card featured={isSelected} className={isSelected ? "bg-peach/40" : ""}>
-                      <h3 className="font-serif text-3xl text-navy">{p.title}</h3>
-                      <p className="mt-4 font-sans text-sm leading-relaxed text-ocean">{PERSONALITY_STYLE[p.id]}</p>
+                      <h3 className="font-serif text-2xl text-navy md:text-3xl">{p.title}</h3>
+                      <p className="mt-3 font-sans text-sm leading-relaxed text-ocean md:mt-4">{PERSONALITY_STYLE[p.id]}</p>
                     </Card>
                   </div>
                 );
@@ -209,20 +203,21 @@ export default function MintPage() {
             </div>
           </div>
 
-          <div className="col-span-12 md:col-span-5 md:col-start-2">
+          <div className="max-w-md">
             {error && (
               <div className="mb-6 flex items-start gap-4">
-                <span aria-hidden className="mt-1 h-px w-12 shrink-0 bg-orange" />
+                <span aria-hidden className="mt-1 h-px w-8 shrink-0 bg-orange md:w-12" />
                 <p className="font-sans text-sm leading-relaxed text-orange">{error}</p>
               </div>
             )}
             {ready && !authenticated ? (
-              <Button variant="primary" onClick={() => login()}>
+              <Button variant="primary" className="w-full md:w-auto" onClick={() => login()}>
                 Sign in to continue
               </Button>
             ) : (
               <Button
                 variant="primary"
+                className="w-full md:w-auto"
                 disabled={!ready || !selected || !name.trim()}
                 onClick={handleMint}
               >
@@ -234,9 +229,9 @@ export default function MintPage() {
       )}
 
       {phase === "minting" && (
-        <div className="col-span-12 flex min-h-[30vh] flex-col justify-center md:col-span-7 md:col-start-2">
+        <div className="flex min-h-[30vh] max-w-xl flex-col justify-center">
           <div className="flex items-center gap-4">
-            <span aria-hidden className="h-px w-12 bg-orange" />
+            <span aria-hidden className="h-px w-8 bg-orange md:w-12" />
             <FadingLabel
               key={mintLabel}
               text={mintLabel}
@@ -254,9 +249,9 @@ export default function MintPage() {
       )}
 
       {phase === "success" && result && (
-        <div className="col-span-12 md:col-span-7 md:col-start-2">
-          <div className="mb-8 flex items-center gap-4">
-            <span aria-hidden className="h-px w-12 bg-orange" />
+        <div className="max-w-xl">
+          <div className="mb-6 flex items-center gap-4">
+            <span aria-hidden className="h-px w-8 bg-orange md:w-12" />
             <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Coach minted</span>
           </div>
           <h2 className="font-serif text-4xl leading-[0.95] tracking-tight text-navy md:text-6xl">
@@ -267,7 +262,14 @@ export default function MintPage() {
             Confirmed on-chain now. Encrypted storage propagation continues in the background —
             your coach is ready to use in the meantime.
           </p>
-          <div className="mt-8">
+          <div className="mt-8 flex flex-col items-start gap-6 md:flex-row md:items-center">
+            <Button
+              variant="primary"
+              className="w-full md:w-auto"
+              onClick={() => router.push("/dashboard")}
+            >
+              Continue to dashboard
+            </Button>
             <Button
               variant="link"
               onClick={() => window.open(result.explorerUrl, "_blank", "noopener,noreferrer")}

@@ -18,13 +18,13 @@ export function Manifesto() {
 
         <div className="col-span-12 md:col-span-6 md:col-start-6">
           <p className="font-sans text-lg leading-relaxed text-navy first-letter:float-left first-letter:mr-3 first-letter:font-serif first-letter:text-7xl first-letter:leading-[0.8] first-letter:text-navy">
-            Strava owns your data — your pace, your routes, your history — the moment you save
-            it. Every training app you have ever used keeps its copy of years of effort behind a
-            login it controls, not you. 0run inverts that. Your runs are encrypted before they
-            ever leave your device, stored on decentralized infrastructure, and unlocked by
-            nothing but your own wallet. Your coach is not a feature of an app you rent — it is
-            an intelligent NFT you own outright, one whose memory of every kilometre travels with
-            you, provably yours, verifiable by anyone, readable by no one but you.
+            Every run you have ever logged lives in someone else&rsquo;s app — years of effort
+            behind a login you don&rsquo;t control, under rules that can change overnight.{" "}
+            <span className="[font-variant-numeric:slashed-zero]">0run</span> starts from a
+            different premise: your runs belong to you, and so does the coach who learns from
+            them. Yours like the shoes by your door, not like an account you rent. It keeps your
+            story private, it answers to no one but you, and if you ever leave, everything
+            leaves with you.
           </p>
         </div>
       </div>

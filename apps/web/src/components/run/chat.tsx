@@ -46,9 +46,9 @@ export function Chat({ runId }: { runId?: number }) {
   }
 
   return (
-    <section className="mt-16 border-t border-navy pt-10">
+    <section className="mt-10 border-t border-navy pt-8 md:mt-16 md:pt-10">
       <div className="mb-8 flex items-center gap-4">
-        <span aria-hidden className="h-px w-12 bg-navy" />
+        <span aria-hidden className="h-px w-8 bg-navy md:w-12" />
         <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">
           {runId ? "Ask about this run" : "Ask your coach"}
         </span>

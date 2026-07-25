@@ -45,11 +45,11 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
   }, [run?.status, load]);
 
   if (!ready) return null;
-  if (error) return <Shell><Label>{error}</Label></Shell>;
-  if (!run) return <Shell><Label>loading this run…</Label></Shell>;
+  if (error) return <Label>{error}</Label>;
+  if (!run) return <Label>loading this run…</Label>;
 
   return (
-    <Shell>
+    <section>
       <Link
         href="/dashboard"
         className="inline-block py-3 font-sans text-[10px] uppercase tracking-[0.3em] text-ocean underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
@@ -58,24 +58,24 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       </Link>
 
       {run.status === "processing" && (
-        <section className="mt-10 border-t border-navy pt-10">
+        <section className="mt-6 border-t border-navy pt-8">
           <Label>The coach is working</Label>
           <div className="mt-8 max-w-md"><PipelineSteps steps={run.steps} /></div>
         </section>
       )}
 
       {run.status === "error" && (
-        <section className="mt-10 border-t border-navy pt-10">
+        <section className="mt-6 border-t border-navy pt-8">
           <Label>This run could not be processed</Label>
           <div className="mt-8 max-w-md"><PipelineSteps steps={run.steps} /></div>
         </section>
       )}
 
-      <div className="mt-16 grid grid-cols-12 gap-x-8 gap-y-16">
-        <div className="col-span-12 md:col-span-5">
+      <div className="mt-8 grid grid-cols-1 gap-y-10 md:mt-12 md:grid-cols-12 md:gap-x-8">
+        <div className="md:col-span-5">
           <RunMap polyline={run.polyline} />
           {run.stats && (
-            <dl className="mt-8 grid grid-cols-2 gap-y-6 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
+            <dl className="mt-6 grid grid-cols-2 gap-y-6 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean md:mt-8">
               <Stat label="distance" value={`${run.stats.distanceKm.toFixed(2)} km`} />
               <Stat label="pace" value={`${Math.floor(run.stats.avgPaceSecKm / 60)}:${String(Math.round(run.stats.avgPaceSecKm % 60)).padStart(2, "0")}/km`} />
               <Stat label="elevation" value={`${run.stats.elevationGainM} m`} />
@@ -84,7 +84,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
           )}
         </div>
 
-        <div className="col-span-12 md:col-span-6 md:col-start-7">
+        <div className="md:col-span-6 md:col-start-7">
           {run.report ? (
             <ReportView
               report={run.report}
@@ -102,12 +102,8 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       </div>
 
       {run.status === "done" && <Chat runId={run.id} />}
-    </Shell>
+    </section>
   );
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return <main className="relative mx-auto max-w-[1600px] px-8 py-20 md:px-16 md:py-32">{children}</main>;
 }
 
 function Label({ children }: { children: React.ReactNode }) {

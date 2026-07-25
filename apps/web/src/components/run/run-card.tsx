@@ -53,7 +53,7 @@ export function RunCard({ run }: { run: RunRow }) {
 
       {run.status === "processing" ? (
         <>
-          <h2 className="font-serif text-3xl leading-tight text-navy">
+          <h2 className="font-serif text-2xl leading-tight text-navy md:text-3xl">
             The coach is <em className="italic text-orange">reading</em> this run…
           </h2>
           <p className="mt-4 max-w-md font-sans text-sm leading-relaxed text-ocean">
@@ -64,17 +64,17 @@ export function RunCard({ run }: { run: RunRow }) {
           </div>
         </>
       ) : run.status === "error" ? (
-        <h2 className="font-serif text-3xl leading-tight text-navy">This run could not be processed</h2>
+        <h2 className="font-serif text-2xl leading-tight text-navy md:text-3xl">This run could not be processed</h2>
       ) : (
         <Link href={`/runs/${run.id}`} className="block">
-          <h2 className="font-serif text-3xl leading-tight text-navy transition-colors duration-500 group-hover:text-orange md:text-4xl">
+          <h2 className="font-serif text-2xl leading-tight text-navy transition-colors duration-500 group-hover:text-orange md:text-4xl">
             {run.report?.headline ?? "Report unavailable"}
           </h2>
         </Link>
       )}
 
       {run.stats && (
-        <div className="mt-8 flex flex-wrap gap-x-10 gap-y-3 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
+        <div className="mt-6 flex flex-wrap gap-x-6 gap-y-3 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean md:mt-8 md:gap-x-10">
           <span>{run.stats.distanceKm.toFixed(2)} km</span>
           <span>{duration(run.stats.durationSec)}</span>
           <span>{pace(run.stats.avgPaceSecKm)}</span>
