@@ -10,8 +10,10 @@ vi.mock("@/db", () => ({
   db: {
     select: (projection?: any) => ({
       from: () => {
-        // count() query for runs — anything with a projection is the run count
-        if (projection) return { where: () => [{ value: 2 }] };
+        // Both queries now pass a projection (the coaches one deliberately does
+        // not select the base64 avatar), so they are told apart by their shape:
+        // `{ value: count() }` is the run count, anything else is the coach rows.
+        if (projection && "value" in projection) return { where: () => [{ value: 2 }] };
         return coachRows;
       },
     }),
@@ -36,6 +38,13 @@ vi.mock("ethers", () => ({
 const resolveCoachEns = vi.fn();
 vi.mock("@/lib/ens/resolve", () => ({ resolveCoachEns: (name: string) => resolveCoachEns(name) }));
 
+// Ordering a portrait is a paid network call: mocked so the tests never make
+// one, and asserted so the backfill cannot silently stop happening.
+const ensureAvatarInBackground = vi.fn();
+vi.mock("@/lib/avatar/ensure", () => ({
+  ensureAvatarInBackground: (c: any) => ensureAvatarInBackground(c),
+}));
+
 import { _resetDirectoryCacheForTest, getCoachDirectory } from "./directory";
 
 const records = (tokenId: string, contract = CONTRACT) => ({
@@ -45,6 +54,7 @@ const records = (tokenId: string, contract = CONTRACT) => ({
 beforeEach(() => {
   _resetDirectoryCacheForTest();
   resolveCoachEns.mockReset();
+  ensureAvatarInBackground.mockReset();
   process.env.AGENT_NFT_ADDRESS = CONTRACT;
   process.env.ENS_PARENT_NAME = "0run.eth";
   coachRows = [{ tokenId: "3", userId: 1, name: "Pedro", personality: "drill_sergeant", ensName: null }];
@@ -107,6 +117,19 @@ describe("getCoachDirectory — recupero del nome ENS perso", () => {
     expect(resolveCoachEns).toHaveBeenCalledTimes(1);
     expect(resolveCoachEns).toHaveBeenCalledWith("custom.0run.eth");
     expect(entry.displayName).toBe("custom.0run.eth");
+  });
+
+  it("un coach senza ritratto ne fa chiedere uno, in background", async () => {
+    resolveCoachEns.mockResolvedValue({ address: OWNER, records: records("3") });
+    await getCoachDirectory();
+    expect(ensureAvatarInBackground).toHaveBeenCalledWith(expect.objectContaining({ tokenId: "3", name: "Pedro" }));
+  });
+
+  it("un coach che ha già il ritratto non ne fa generare un altro", async () => {
+    coachRows = [{ tokenId: "3", userId: 1, name: "Pedro", personality: "pacer", ensName: null, hasAvatar: true }];
+    resolveCoachEns.mockResolvedValue({ address: OWNER, records: records("3") });
+    await getCoachDirectory();
+    expect(ensureAvatarInBackground).not.toHaveBeenCalled();
   });
 
   it("un agente senza riga in DB non fa partire nessun tentativo di recupero", async () => {

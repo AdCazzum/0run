@@ -63,6 +63,21 @@ export const coaches = pgTable("coaches", {
   // as agentId above: rows minted before this column existed predate it, and
   // a coach ENS assignment failed for is still a fully valid coach.
   ensName: text("ens_name"),
+  // --- Avatar (0G Compute, z-image-turbo) ---------------------------------
+  // The coach's face, generated once at mint from a prompt derived from its
+  // name and personality (lib/avatar/generate.ts). Stored as base64 PNG in the
+  // index rather than on 0G Storage because it is served on every page load
+  // and a freshly uploaded blob is not downloadable for 16+ minutes (see
+  // memoryCipher above). Public by nature — an avatar is the one thing about a
+  // coach meant to be seen by strangers — so unlike memory it is not encrypted.
+  // Nullable everywhere: generation is a best-effort background step and a
+  // coach without a face is a fully working coach.
+  avatarImage: text("avatar_image"),
+  avatarModel: text("avatar_model"),
+  // "true" | "false" | "unavailable" — whether THIS image came with a TEE
+  // attestation from the provider. Recorded as measured, never asserted.
+  avatarVerifiedTee: text("avatar_verified_tee"),
+
   // --- Health data (docs/superpowers/specs/2026-07-25-health-data-spec.md) --
   // COVERAGE METADATA ONLY — never a health value. The values themselves
   // live exclusively in the user-key-encrypted memory (privateLayer.

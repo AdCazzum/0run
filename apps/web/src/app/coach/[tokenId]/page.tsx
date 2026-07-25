@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { count, eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import { GALILEO, explorerTx } from "@0run/shared";
 import { db } from "@/db";
 import { coaches, runs } from "@/db/schema";
 import { AskThisCoach } from "@/components/coach/ask-this-coach";
 import { SiteHeader } from "@/components/landing/site-header";
 import { SiteFooter } from "@/components/landing/site-footer";
+import { CoachAvatar } from "@/components/coach/coach-avatar";
 
 // Queries Postgres per request. Without this Next tries to prerender it at build
 // time, which fails in CI (no database) and would freeze the data into the build
@@ -25,7 +26,26 @@ const PERSONALITY_LABEL: Record<string, string> = {
 
 async function loadCoach(tokenId: string) {
   if (!/^\d+$/.test(tokenId)) return null;
-  const [coach] = await db.select().from(coaches).where(eq(coaches.tokenId, tokenId));
+  // Explicit projection: `select()` here would drag the base64 avatar PNG
+  // (~120KB) into a page that only needs to know whether one exists — the
+  // image itself is served, and browser-cached, by /api/coach/<id>/avatar.
+  const [coach] = await db
+    .select({
+      tokenId: coaches.tokenId,
+      userId: coaches.userId,
+      name: coaches.name,
+      personality: coaches.personality,
+      memoryRoot: coaches.memoryRoot,
+      profileRoot: coaches.profileRoot,
+      mintTx: coaches.mintTx,
+      agentId: coaches.agentId,
+      ensName: coaches.ensName,
+      hasAvatar: sql<boolean>`${coaches.avatarImage} is not null`,
+      avatarModel: coaches.avatarModel,
+      avatarVerifiedTee: coaches.avatarVerifiedTee,
+    })
+    .from(coaches)
+    .where(eq(coaches.tokenId, tokenId));
   if (!coach) return null;
   const [runCount] = await db.select({ value: count() }).from(runs).where(eq(runs.userId, coach.userId));
   return { coach, runsRead: runCount?.value ?? 0 };
@@ -72,6 +92,13 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
 
         <div className="mt-8 grid grid-cols-12 gap-x-8 gap-y-12">
           <div className="col-span-12 md:col-span-7">
+            <CoachAvatar
+              tokenId={coach.tokenId}
+              name={coach.name}
+              hasAvatar={coach.hasAvatar}
+              size={160}
+              className="mb-8"
+            />
             <h1 className="font-serif text-6xl leading-[0.9] text-navy md:text-8xl">{coach.name}</h1>
             <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
               An AI running coach that exists as an <em className="font-serif italic text-orange">intelligent NFT</em> on
@@ -103,6 +130,15 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
             <Row label="memory root">
               <span className="break-all font-sans text-[10px] tracking-normal">{coach.memoryRoot || "—"}</span>
             </Row>
+            {coach.hasAvatar && (
+              <Row label="portrait">
+                {/* Said as measured: this model returns an attestation per job,
+                    so "verified" here is a fact about THIS image, not a claim
+                    about the platform. */}
+                {coach.avatarModel ?? "generated"} on 0G Compute ·{" "}
+                {coach.avatarVerifiedTee === "true" ? "TEE verified" : "attestation unavailable"}
+              </Row>
+            )}
             <Row label="identity registry">
               <Ext href={`${GALILEO.explorer}/address/${ERC8004_IDENTITY_REGISTRY}`}>ERC-8004 ↗</Ext>
             </Row>

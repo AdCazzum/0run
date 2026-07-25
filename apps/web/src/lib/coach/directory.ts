@@ -1,10 +1,11 @@
 import { ethers } from "ethers";
-import { count, eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import { GALILEO } from "@0run/shared";
 import { db } from "@/db";
 import { coaches, runs } from "@/db/schema";
 import { resolveCoachEns } from "@/lib/ens/resolve";
 import { slugifyLabel } from "@/lib/ens/subname";
+import { ensureAvatarInBackground } from "@/lib/avatar/ensure";
 
 const NFT_ABI = [
   "function nextId() view returns (uint256)",
@@ -39,6 +40,10 @@ export type DirectoryEntry = {
   // null OR the live resolution failed (RPC down, record cleared, etc).
   ensAddress: string | null;
   ensRecords: Record<string, string>;
+  // Whether this coach has a generated avatar (see components/coach/coach-avatar.tsx).
+  // A boolean, never the image: the PNG is ~120KB and this list is rebuilt on a
+  // page load, so the bytes are fetched by the browser from the avatar route.
+  hasAvatar: boolean;
   // The name to actually show as this agent's identity. Equals `ensName`
   // ONLY when live resolution just succeeded (ensAddress is non-null) —
   // never invented, never falls back to a typed/DB display name.
@@ -113,12 +118,27 @@ async function buildDirectory(): Promise<DirectoryEntry[]> {
     .filter((r): r is PromiseFulfilledResult<{ tokenId: string; owner: string }> => r.status === "fulfilled")
     .map((r) => r.value);
 
-  const dbRows = await db.select().from(coaches);
+  // Explicit projection: `select()` would pull coaches.avatar_image (a base64
+  // PNG per row) across the wire on every directory build, for a boolean.
+  const dbRows = await db
+    .select({
+      tokenId: coaches.tokenId,
+      userId: coaches.userId,
+      name: coaches.name,
+      personality: coaches.personality,
+      ensName: coaches.ensName,
+      hasAvatar: sql<boolean>`${coaches.avatarImage} is not null`,
+    })
+    .from(coaches);
   const byTokenId = new Map(dbRows.map((r) => [r.tokenId, r] as const));
 
   return Promise.all(
     agents.map(async ({ tokenId, owner }) => {
       const dbRow = byTokenId.get(tokenId);
+
+      // A coach we know about but have never drawn gets its portrait ordered
+      // now, in the background, and shows up with one on a later load.
+      if (dbRow && !dbRow.hasAvatar) ensureAvatarInBackground(dbRow);
 
       let runCount: number | null = null;
       if (dbRow) {
@@ -150,6 +170,7 @@ async function buildDirectory(): Promise<DirectoryEntry[]> {
         tokenId,
         owner,
         personality: dbRow?.personality ?? null,
+        hasAvatar: dbRow?.hasAvatar ?? false,
         runCount,
         ensName,
         ensAddress,

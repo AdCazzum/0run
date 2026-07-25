@@ -5,6 +5,7 @@ import { getCoachDirectory, type DirectoryEntry } from "@/lib/coach/directory";
 import { PageChrome } from "@/components/ui/page-chrome";
 import { SiteHeader } from "@/components/landing/site-header";
 import { SiteFooter } from "@/components/landing/site-footer";
+import { CoachAvatar } from "@/components/coach/coach-avatar";
 
 export const metadata: Metadata = {
   title: "Coaches — 0run",
@@ -141,6 +142,13 @@ function DirectoryCard({ entry }: { entry: ResolvedEntry }) {
 
   return (
     <article className="border-t border-navy pt-6 transition-colors duration-500 hover:bg-peach/20">
+      <CoachAvatar
+        tokenId={entry.tokenId}
+        name={entry.displayName}
+        hasAvatar={entry.hasAvatar}
+        size={88}
+        className="mb-5"
+      />
       {/* The ENS name IS the heading: it is the agent's identity, and the page only
           lists agents whose name resolved a moment ago, so it is always present. */}
       <h2 className="font-serif text-4xl leading-tight text-orange">{entry.displayName}</h2>

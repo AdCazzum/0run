@@ -10,6 +10,7 @@ import { prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { mintCoachOnChain, updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
 import { registerAgent } from "@/lib/erc8004/register";
 import { assignSubname, slugifyLabel } from "@/lib/ens/subname";
+import { buildAvatarPrompt, generateAvatar } from "@/lib/avatar/generate";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -329,6 +330,32 @@ export async function POST(req: Request) {
         .catch((e) => console.error("mint: background ENS assignment crashed", e));
     };
 
+    // Fires the avatar generation in the background, same lane as the three
+    // above: 0G Compute answers in about a second, but it is still a network
+    // call on someone else's schedule and a coach without a face is a working
+    // coach. generateAvatar() never throws (see lib/avatar/generate.ts).
+    const startBackgroundAvatar = (tokenId: string) => {
+      generateAvatar(buildAvatarPrompt(name, personality, tokenId))
+        .then(async (result) => {
+          if (!result.ok) {
+            console.error("mint: background avatar generation failed", result.error);
+            return;
+          }
+          console.log(
+            `mint: background avatar ok (job ${result.jobId}, tee ${result.teeVerified}, cost ${result.costWei ?? "?"} wei)`,
+          );
+          await db
+            .update(coaches)
+            .set({
+              avatarImage: result.pngBase64,
+              avatarModel: result.model,
+              avatarVerifiedTee: result.teeVerified ? "true" : "false",
+            })
+            .where(eq(coaches.userId, user.userId));
+        })
+        .catch((e) => console.error("mint: background avatar generation crashed", e));
+    };
+
     const finalizeMinted = async (tokenId: string, txHash: string) => {
       // Writing tokenId here is also what takes the row out of reach of the stale
       // reclaim above, so it must be part of this single update, never a later one.
@@ -338,6 +365,7 @@ export async function POST(req: Request) {
       startBackgroundUpload();
       startBackgroundRegistration(tokenId);
       startBackgroundEns(tokenId);
+      startBackgroundAvatar(tokenId);
     };
 
     const mintPromise = runMint(user.wallet, dataDescription, dataHash, memPrep.rootHash, profPrep.rootHash);
