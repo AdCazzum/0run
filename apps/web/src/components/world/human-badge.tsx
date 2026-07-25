@@ -11,13 +11,15 @@ import { usePrivyReady } from "@/app/providers";
  * hero.tsx's StartWithLogin: Privy hooks mount only under a ready provider,
  * because a public page must never 500 over a missing Privy env.
  */
-export function HumanBadge() {
+type HumanBadgeVariant = "self" | "owner";
+
+export function HumanBadge({ variant = "self" }: { variant?: HumanBadgeVariant } = {}) {
   const privyReady = usePrivyReady();
   if (!privyReady) return null;
-  return <HumanBadgeInner />;
+  return <HumanBadgeInner variant={variant} />;
 }
 
-function HumanBadgeInner() {
+function HumanBadgeInner({ variant }: { variant: HumanBadgeVariant }) {
   const { ready, authenticated } = usePrivy();
   const [backed, setBacked] = useState(false);
 
@@ -43,6 +45,17 @@ function HumanBadgeInner() {
   }, [ready, authenticated]);
 
   if (!backed) return null;
+  // "owner" is for pages whose subject is the AGENT (e.g. the dashboard's
+  // coach header): the copy must say the verified human is YOU, its owner —
+  // never read as a property of the coach itself.
+  if (variant === "owner") {
+    return (
+      <p className="mt-2 font-sans text-[10px] uppercase tracking-[0.25em] text-emerald-700">
+        you · human-backed ✓{" "}
+        <span className="text-navy/60">one real human behind this coach — verified with World App</span>
+      </p>
+    );
+  }
   return (
     <p className="mt-6 font-sans text-[10px] uppercase tracking-[0.25em] text-emerald-700">
       human-backed ✓ <span className="text-navy/60">unique human, verified with World App</span>

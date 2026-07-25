@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RunCard } from "@/components/run/run-card";
 import { EnsBadge } from "@/components/coach/ens-badge";
 import { HumanBackingWidget } from "@/components/world/human-backing-widget";
+import { HumanBadge } from "@/components/world/human-badge";
 import type { CoachSummary, RunRow } from "@/components/run/types";
 
 type Feed = { runs: RunRow[]; coach: CoachSummary | null };
@@ -106,6 +107,8 @@ export default function DashboardPage() {
           <div className="mt-3">
             <EnsBadge name={feed.coach.ensName} />
           </div>
+          {/* About the OWNER, not the coach — the variant's copy says so. */}
+          <HumanBadge variant="owner" />
         </div>
         <Link
           href="/coach"
