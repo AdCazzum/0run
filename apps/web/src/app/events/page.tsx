@@ -6,6 +6,11 @@ import { claims, events } from "@/db/schema";
 import { Card } from "@/components/ui/card";
 import { CreateEventForm } from "./create-event-form";
 
+// Queries Postgres per request. Without this Next tries to prerender it at build
+// time, which fails in CI (no database) and would freeze the data into the build
+// even where it succeeds.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Events — 0run",
   description: "Runner-created events, gated by World ID: one unique real person can claim each — not proof of attendance.",

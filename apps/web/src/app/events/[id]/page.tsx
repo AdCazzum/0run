@@ -7,6 +7,11 @@ import { db } from "@/db";
 import { claims, events, users } from "@/db/schema";
 import { ClaimWidget } from "./claim-widget";
 
+// Queries Postgres per request. Without this Next tries to prerender it at build
+// time, which fails in CI (no database) and would freeze the data into the build
+// even where it succeeds.
+export const dynamic = "force-dynamic";
+
 const DAY = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 async function loadEvent(idParam: string) {

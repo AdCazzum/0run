@@ -7,6 +7,11 @@ import { db } from "@/db";
 import { coaches, runs } from "@/db/schema";
 import { AskThisCoach } from "@/components/coach/ask-this-coach";
 
+// Queries Postgres per request. Without this Next tries to prerender it at build
+// time, which fails in CI (no database) and would freeze the data into the build
+// even where it succeeds.
+export const dynamic = "force-dynamic";
+
 const AGENT_NFT = process.env.AGENT_NFT_ADDRESS ?? "";
 const ERC8004_IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
 
