@@ -2,6 +2,13 @@ import { z } from "zod";
 
 export const SIGN_MESSAGE = "0run key derivation v1 — sign to unlock your encrypted running data";
 
+/**
+ * Cap on the athlete-written coach brief. Long enough for a real specialisation
+ * ("trail ultras, heat adaptation, low-HR base building"), short enough that it
+ * cannot crowd out the rest of a system prompt.
+ */
+export const EXPERTISE_MAX = 400;
+
 export const PersonalitySchema = z.enum(["pacer", "coach", "drill_sergeant"]);
 export type Personality = z.infer<typeof PersonalitySchema>;
 
@@ -106,7 +113,17 @@ export type HealthSnapshot = z.infer<typeof HealthSnapshotSchema>;
 // silently coerced into matching.
 export const CoachMemoryV1Schema = z.object({
   version: z.literal(1),
-  coach: z.object({ name: z.string().min(1), personality: PersonalitySchema }),
+  coach: z.object({
+    name: z.string().min(1),
+    personality: PersonalitySchema,
+    // Free text the athlete wrote at creation: what this coach knows, believes,
+    // specialises in. Optional so every v2 memory written before it existed
+    // still parses. It is PUBLIC by design — it travels into the profile layer
+    // (see buildProfile), which is what a stranger consulting this coach reads,
+    // and into the coach's ENS description. That is the point: it is what makes
+    // one coach worth asking rather than another.
+    expertise: z.string().max(EXPERTISE_MAX).optional(),
+  }),
   privateLayer: z.object({ runs: z.array(RunSummarySchema) }),
 });
 export type CoachMemoryV1 = z.infer<typeof CoachMemoryV1Schema>;
@@ -125,7 +142,17 @@ export type CoachMemoryV1 = z.infer<typeof CoachMemoryV1Schema>;
 // source of the CoachMemory type.
 export const CoachMemorySchema = z.object({
   version: z.literal(2),
-  coach: z.object({ name: z.string().min(1), personality: PersonalitySchema }),
+  coach: z.object({
+    name: z.string().min(1),
+    personality: PersonalitySchema,
+    // Free text the athlete wrote at creation: what this coach knows, believes,
+    // specialises in. Optional so every v2 memory written before it existed
+    // still parses. It is PUBLIC by design — it travels into the profile layer
+    // (see buildProfile), which is what a stranger consulting this coach reads,
+    // and into the coach's ENS description. That is the point: it is what makes
+    // one coach worth asking rather than another.
+    expertise: z.string().max(EXPERTISE_MAX).optional(),
+  }),
   privateLayer: z.object({
     runs: z.array(RunSummarySchema),
     healthSnapshot: HealthSnapshotSchema.nullable().default(null),
@@ -140,6 +167,8 @@ export const CoachProfileSchema = z.object({
   totals: z.object({ runs: z.number().int().min(0), km: z.number().min(0) }),
   paceTrend: z.array(z.number()).describe("avgPaceSecKm ultime N corse, più recente per ultima"),
   styleNotes: z.string(),
+  /** See CoachMemorySchema.coach.expertise — carried here so a consultation can read it. */
+  expertise: z.string().max(EXPERTISE_MAX).optional(),
 });
 export type CoachProfile = z.infer<typeof CoachProfileSchema>;
 
@@ -153,10 +182,27 @@ export const PERSONALITY_STYLE: Record<Personality, string> = {
   drill_sergeant: "No excuses: blunt verdicts, high standards, direct commands.",
 };
 
-export function initialMemory(name: string, personality: Personality): { memory: CoachMemory; profile: CoachProfile } {
+export function initialMemory(
+  name: string,
+  personality: Personality,
+  expertise?: string,
+): { memory: CoachMemory; profile: CoachProfile } {
   PersonalitySchema.parse(personality);
+  const brief = expertise?.trim() ? expertise.trim().slice(0, EXPERTISE_MAX) : undefined;
   return {
-    memory: { version: 2, coach: { name, personality }, privateLayer: { runs: [], healthSnapshot: null } },
-    profile: { version: 1, name, personality, totals: { runs: 0, km: 0 }, paceTrend: [], styleNotes: PERSONALITY_STYLE[personality] },
+    memory: {
+      version: 2,
+      coach: { name, personality, ...(brief ? { expertise: brief } : {}) },
+      privateLayer: { runs: [], healthSnapshot: null },
+    },
+    profile: {
+      version: 1,
+      name,
+      personality,
+      totals: { runs: 0, km: 0 },
+      paceTrend: [],
+      styleNotes: PERSONALITY_STYLE[personality],
+      ...(brief ? { expertise: brief } : {}),
+    },
   };
 }

@@ -11,6 +11,12 @@ export type AssignSubnameRecords = {
   // Address of A2A_SIGNER_PRIVATE_KEY, or null when that env is unset — the
   // record is simply skipped then; the coach still mints and resolves.
   signer: string | null;
+  /** ENSIP-5 `description`: one line, for the clients that show it. */
+  description: string;
+  /** ENSIP-5 `url`: same destination as agent-endpoint[web], under the key every client reads. */
+  url: string;
+  /** `0run:personality`: pacer | coach | drill_sergeant. */
+  personality: string;
 };
 type Result = { name: string; txHash: string } | { error: string };
 
@@ -139,6 +145,16 @@ export async function assignSubname(label: string, owner: string, records: Assig
       // a name resolution — ENS as the auth registry, not just naming.
       iface.encodeFunctionData("setText", [node, "agent-endpoint[a2a]", records.a2aEndpoint]),
       ...(records.signer ? [iface.encodeFunctionData("setText", [node, "agent-signer", records.signer])] : []),
+      // `description` and `url` are the ENSIP-5 keys every ENS client already
+      // renders. Without them the coach shows up in app.ens.domains with a face
+      // and no idea who it is: `agent-context` and `agent-endpoint[web]` carry
+      // the same meaning, but only software that knows ENSIP-26 reads them.
+      iface.encodeFunctionData("setText", [node, "description", records.description]),
+      iface.encodeFunctionData("setText", [node, "url", records.url]),
+      // Namespaced, because it is ours: it lets anyone — including a directory
+      // that is not ours — filter coaches by how they coach without asking our
+      // database anything.
+      iface.encodeFunctionData("setText", [node, "0run:personality", records.personality]),
     ];
 
     const tx = await resolver.multicall(calls);
@@ -147,6 +163,22 @@ export async function assignSubname(label: string, owner: string, records: Assig
   } catch (e: any) {
     return { error: e.message ?? String(e) };
   }
+}
+
+/**
+ * Writes one text record on an existing name.
+ *
+ * Exists for `0run:erc8004`, the agent's id in the ERC-8004 IdentityRegistry.
+ * It cannot go in the multicall above: the ENS assignment and the ERC-8004
+ * registration are two independent background steps after a mint, and either
+ * can land first — so whichever finishes second writes this record, once both
+ * halves are known. Publishing it completes the chain anyone can verify from
+ * the name alone: ENS name → iNFT on 0G Galileo → entry in the registry.
+ *
+ * Same receipt discipline as assignSubname: never throws.
+ */
+export async function setTextRecord(fullName: string, key: string, value: string): Promise<Result> {
+  return setTextRecords(fullName, { [key]: value });
 }
 
 /**
@@ -164,6 +196,8 @@ export async function setTextRecords(fullName: string, texts: Record<string, str
       return { error: "configurazione ENS incompleta (ENS_PARENT_NAME/ENS_OWNER_PRIVATE_KEY/ENS_SEPOLIA_RPC)" };
     }
     const node = namehash(fullName);
+    // The resolver is the parent's, looked up live — a subname has no separate
+    // entry to read (see the long note above).
     const resolverAddress = await client().getEnsResolver({ name: parent });
     if (!resolverAddress) return { error: `nessun resolver trovato per ${parent}` };
 

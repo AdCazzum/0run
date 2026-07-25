@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { usePrivy, useLogin, useSendTransaction } from "@privy-io/react-auth";
 import { IDKitRequestWidget, proofOfHuman, type IDKitErrorCodes } from "@worldcoin/idkit";
 import { encodeFunctionData, parseAbi } from "viem";
@@ -8,6 +9,7 @@ import { GALILEO } from "@0run/shared";
 import { Button } from "@/components/ui/button";
 import { claimSignal } from "@/lib/world/signal";
 import { RUN_EVENTS_ABI } from "@/lib/world/runEventsAbi";
+import { usePrivyReady } from "@/app/providers";
 
 type RpContext = { rp_id: string; nonce: string; created_at: number; expires_at: number; signature: string };
 type Phase = "idle" | "fetching-context" | "verifying" | "sending-tx" | "confirming" | "done" | "error";
@@ -48,7 +50,34 @@ function label(phase: Phase): string {
  * a live World App with a verified identity and a funded embedded wallet —
  * see the Task 2 report for what specifically still needs a phone test.
  */
-export function ClaimWidget({ dbEventId, onchainEventId }: { dbEventId: number; onchainEventId: string }) {
+/**
+ * The event page is PUBLIC, so the Privy hooks below live one component deeper:
+ * calling them where the provider is not mounted is what once turned the
+ * landing page into a 500 (see app/providers.tsx), and hooks cannot be called
+ * behind an `if`. This one matters more than most — it also signs a transaction
+ * from the claimant's own wallet, so there is no version of it that works
+ * without auth; without it the page still reads, and says why.
+ */
+export function ClaimWidget(props: { dbEventId: number; onchainEventId: string }) {
+  return usePrivyReady() ? <ClaimWidgetWithPrivy {...props} /> : <ClaimUnavailable />;
+}
+
+/** Auth is not configured in this build: no dead button, and no pretending. */
+function ClaimUnavailable() {
+  return (
+    <div className="mt-8">
+      <p className="max-w-md font-sans text-sm leading-relaxed text-navy">
+        Claiming an event needs an account and a wallet to sign with.{" "}
+        <Link href="/dashboard" className="text-navy underline-offset-4 hover:text-orange hover:underline">
+          Start here
+        </Link>
+        .
+      </p>
+    </div>
+  );
+}
+
+function ClaimWidgetWithPrivy({ dbEventId, onchainEventId }: { dbEventId: number; onchainEventId: string }) {
   const { ready, authenticated, user, getAccessToken } = usePrivy();
   const { login } = useLogin();
   const { sendTransaction } = useSendTransaction();

@@ -45,66 +45,68 @@ const PILLARS = [
 
 export default function TechnologyPage() {
   return (
-    <main>
+    <>
       <PageChrome />
       <SiteHeader />
-      <section className="mx-auto max-w-[1600px] px-8 pb-16 pt-24 md:px-16">
-        <div className="mb-8 flex items-center gap-4">
-          <span aria-hidden className="h-px w-12 bg-navy" />
-          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">
-            The technology
-          </span>
-        </div>
-        <h1 className="max-w-4xl font-serif text-5xl leading-[0.95] tracking-tight text-navy md:text-7xl">
-          Verifiable <em className="italic text-orange">by default.</em>
-        </h1>
-        <p className="mt-8 max-w-xl font-sans text-lg leading-relaxed text-navy">
-          Every promise on the home page is backed by open, inspectable
-          infrastructure. Here is how.
-        </p>
-      </section>
+      <main>
+        <section className="mx-auto max-w-[1600px] px-8 pb-16 pt-24 md:px-16">
+          <div className="mb-8 flex items-center gap-4">
+            <span aria-hidden className="h-px w-12 bg-navy" />
+            <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">
+              The technology
+            </span>
+          </div>
+          <h1 className="max-w-4xl font-serif text-5xl leading-[0.95] tracking-tight text-navy md:text-7xl">
+            Verifiable <em className="italic text-orange">by default.</em>
+          </h1>
+          <p className="mt-8 max-w-xl font-sans text-lg leading-relaxed text-navy">
+            Every promise on the home page is backed by open, inspectable
+            infrastructure. Here is how.
+          </p>
+        </section>
 
-      {PILLARS.map((p, i) => (
-        <section key={p.promise} className="border-t border-navy/15">
-          <div className="mx-auto grid max-w-[1600px] grid-cols-12 gap-8 px-8 py-16 md:px-16 md:py-24">
-            <div className="col-span-12 md:col-span-4 md:col-start-1">
-              <span className="font-serif text-2xl italic text-orange">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <h2 className="mt-4 font-serif text-3xl text-navy md:text-4xl">
-                {p.promise}
-              </h2>
+        {PILLARS.map((p, i) => (
+          <section key={p.promise} className="border-t border-navy/15">
+            <div className="mx-auto grid max-w-[1600px] grid-cols-12 gap-8 px-8 py-16 md:px-16 md:py-24">
+              <div className="col-span-12 md:col-span-4 md:col-start-1">
+                <span className="font-serif text-2xl italic text-orange">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <h2 className="mt-4 font-serif text-3xl text-navy md:text-4xl">
+                  {p.promise}
+                </h2>
+              </div>
+              <div className="col-span-12 md:col-span-6 md:col-start-6">
+                <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
+                  {p.label}
+                </span>
+                <p className="mt-4 font-sans text-lg leading-relaxed text-navy">
+                  {p.how}
+                </p>
+              </div>
             </div>
-            <div className="col-span-12 md:col-span-6 md:col-start-6">
-              <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
-                {p.label}
-              </span>
-              <p className="mt-4 font-sans text-lg leading-relaxed text-navy">
-                {p.how}
-              </p>
-            </div>
+          </section>
+        ))}
+
+        <section className="border-t border-navy/15">
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-8 px-8 py-16 md:px-16">
+            <Link
+              href="/"
+              className="font-sans text-xs uppercase tracking-[0.2em] text-ocean transition-colors duration-500 hover:text-orange"
+            >
+              &larr; Back home
+            </Link>
+            <Link
+              href="/dashboard"
+              className="inline-flex h-12 items-center bg-navy px-10 font-sans text-xs font-medium uppercase tracking-[0.2em] text-cream shadow-[0_4px_16px_rgba(0,0,0,0.15)] transition-shadow duration-500 hover:shadow-[0_8px_24px_rgba(0,0,0,0.2)]"
+            >
+              Start running
+            </Link>
           </div>
         </section>
-      ))}
 
-      <section className="border-t border-navy/15">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-8 px-8 py-16 md:px-16">
-          <Link
-            href="/"
-            className="font-sans text-xs uppercase tracking-[0.2em] text-ocean transition-colors duration-500 hover:text-orange"
-          >
-            &larr; Back home
-          </Link>
-          <Link
-            href="/dashboard"
-            className="inline-flex h-12 items-center bg-navy px-10 font-sans text-xs font-medium uppercase tracking-[0.2em] text-cream shadow-[0_4px_16px_rgba(0,0,0,0.15)] transition-shadow duration-500 hover:shadow-[0_8px_24px_rgba(0,0,0,0.2)]"
-          >
-            Start running
-          </Link>
-        </div>
-      </section>
-
+      </main>
       <SiteFooter />
-    </main>
+    </>
   );
 }

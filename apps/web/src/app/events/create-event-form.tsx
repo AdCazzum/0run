@@ -1,17 +1,37 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { usePrivyReady } from "@/app/providers";
 
 /**
  * Inline creation form on the events feed. Deliberately open to any
  * logged-in user — see api/events/route.ts: events are permissionless by
  * design, the sybil resistance is entirely in the claim path.
+ *
+ * Privy hooks are only legal where the provider is mounted, and this form sits
+ * on a PUBLIC page. Calling them regardless is what once turned the landing
+ * page into a 500 (see app/providers.tsx) — hooks cannot be conditional, so the
+ * branch has to be a component boundary.
  */
 export function CreateEventForm() {
+  return usePrivyReady() ? <CreateEventFormWithPrivy /> : <CreateEventFormWithoutAuth />;
+}
+
+/** Auth is not configured in this build: offer the destination, never a dead button. */
+function CreateEventFormWithoutAuth() {
+  return (
+    <Link href="/dashboard">
+      <Button variant="primary">New event</Button>
+    </Link>
+  );
+}
+
+function CreateEventFormWithPrivy() {
   const { ready, authenticated, getAccessToken } = usePrivy();
   const { login } = useLogin();
   const router = useRouter();

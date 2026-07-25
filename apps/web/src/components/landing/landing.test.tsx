@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// Unmount between tests. Without this the hero's rotating word keeps its
+// timer chain alive past the end of the file, and React then tries to render
+// into a jsdom that no longer exists — "window is not defined", reported by
+// vitest as an unhandled error, which fails the run in CI even though every
+// test passed.
+afterEach(cleanup);
 vi.mock("@privy-io/react-auth", () => ({ usePrivy: () => ({ authenticated: false }), useLogin: () => ({ login: vi.fn() }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 import { Hero } from "./hero";
