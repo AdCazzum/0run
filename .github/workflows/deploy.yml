@@ -2,6 +2,11 @@ name: Deploy
 
 # Deploys the pushed commit to the 0run.fun host. The image is built ON THE SERVER,
 # so no production secret ever exists in this (public) repository or in CI logs.
+#
+# The test job below is intentionally a copy of ci.yml's rather than a reusable
+# `uses:` call: the cross-workflow indirection failed to start any job at all
+# ("workflow file issue", zero jobs) and a deploy gate that silently does not run
+# is worse than a few duplicated lines.
 on:
   push:
     branches: [main]
@@ -12,9 +17,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Gate: the deploy job below cannot start until the full CI suite passes on this commit.
   test:
-    uses: ./.github/workflows/ci.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests (workspaces)
+        # DATABASE_URL is deliberately unset: the db-backed test self-skips.
+        run: npm run test --workspaces --if-present
+      - name: Contract tests
+        run: npx hardhat test
+        working-directory: contracts
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: apps/web
+      - name: Build
+        # The Privy app id is a public client-side identifier (it ships in the
+        # browser bundle), so it lives in a repo variable rather than a secret.
+        env:
+          NEXT_PUBLIC_PRIVY_APP_ID: ${{ vars.NEXT_PUBLIC_PRIVY_APP_ID }}
+        run: npm run build --workspace web
 
   deploy:
     needs: test
@@ -36,7 +62,6 @@ jobs:
       - name: Configure SSH
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh

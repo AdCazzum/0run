@@ -5,8 +5,6 @@ on:
     branches: ["feat/**"]
   pull_request:
     branches: [main]
-  # Deploy invokes this workflow as its gate, so main is tested exactly once per push.
-  workflow_call:
 
 jobs:
   test:
