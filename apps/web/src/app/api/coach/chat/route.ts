@@ -10,6 +10,9 @@ import { buildProfile, parseMemory } from "@/lib/coach/memory";
 import { buildChatMessages } from "@/lib/coach/prompts";
 import { coachComplete } from "@/lib/inference";
 import type { ChatMsg } from "@/lib/inference";
+import { buildConsultInstruction, parseConsultMarker } from "@/lib/a2a/marker";
+import { consultCoach } from "@/lib/a2a/consult";
+import { getCoachDirectory } from "@/lib/coach/directory";
 
 const Body = z.object({
   message: z.string().min(1).max(2000),
@@ -101,17 +104,78 @@ export async function POST(req: Request) {
       messages = [messages[0], pin, ...messages.slice(1)];
     }
 
+    // Colleague roster for the consult instruction — best-effort: the
+    // directory does live RPC (cached 60s) and its failure must never take
+    // the chat down. Own coach excluded; only live-resolving ENS names count.
+    let roster: { tokenId: string; ensName: string; personality: string | null }[] = [];
+    try {
+      roster = (await getCoachDirectory())
+        .filter((e) => e.displayName && e.ensName && e.tokenId !== coach.tokenId)
+        .map((e) => ({ tokenId: e.tokenId, ensName: e.ensName!, personality: e.personality }));
+    } catch (e) {
+      console.warn("chat: directory unavailable, no consult roster", e);
+    }
+    const instruction = buildConsultInstruction(roster);
+    if (instruction && coach.ensName) {
+      messages = [
+        { role: "system", content: `${messages[0].content}\n${instruction}` },
+        ...messages.slice(1),
+      ];
+    }
+
     const completion = await coachComplete(messages);
+
+    // A2A consult (spec 2026-07-25-a2a-ens-design.md): the model asks a
+    // colleague via an inline marker; the server resolves the colleague's ENS
+    // name, makes the signed call, and a second inference integrates the
+    // reply. Depth 1: the marker is only ever parsed HERE, never on the
+    // receiving a2a route. Best-effort throughout — a failed consult means
+    // the coach answers alone and says so, never an error to the athlete.
+    let replyText = completion.text;
+    let consult: { to: string; toTokenId: string | null; question: string; reply: string; coachName: string } | undefined;
+
+    const { marker } = parseConsultMarker(completion.text);
+    // The model can hallucinate a coach that isn't in the roster we gave it
+    // (or that dropped out between prompt build and completion) — treat that
+    // exactly like "no marker": strip it, no A2A call. Never resolve/consult
+    // an ENS name we didn't ourselves offer as a colleague.
+    if (marker && coach.ensName && roster.some((r) => r.ensName === marker.coach)) {
+      const contextSummary = pinnedRun ? `L'ultimo run del mio atleta: ${JSON.stringify(pinnedRun.stats)}` : "";
+      const result = await consultCoach(coach.ensName, marker.coach, marker.question, contextSummary);
+      const followUp: ChatMsg = result.ok
+        ? {
+            role: "user",
+            content: `[risultato del consulto] ${result.coach.name} (${result.coach.ensName}) ha risposto: «${result.reply}». Ora rispondi al tuo atleta integrando e citando il parere del collega. Non usare più il marker <consult>.`,
+          }
+        : {
+            role: "user",
+            content: `[risultato del consulto] Il collega ${marker.coach} non era raggiungibile (${result.error}). Rispondi al tuo atleta da solo, dicendo che hai provato a consultarlo. Non usare più il marker <consult>.`,
+          };
+      const second = await coachComplete([...messages, { role: "assistant", content: completion.text }, followUp]);
+      // Never leak a stray marker to the athlete, whatever the model did.
+      replyText = parseConsultMarker(second.text).cleaned;
+      if (result.ok) {
+        consult = {
+          to: result.coach.ensName,
+          toTokenId: roster.find((r) => r.ensName === marker.coach)?.tokenId ?? null,
+          question: marker.question,
+          reply: result.reply,
+          coachName: result.coach.name,
+        };
+      }
+    } else {
+      replyText = parseConsultMarker(completion.text).cleaned;
+    }
 
     // Never write to the coach's memory (0G Storage / coaches table) from
     // chat — only the run pipeline updates memory. Chat only persists the
-    // conversation turns.
+    // conversation turns (now with the consult block on the assistant turn).
     await db.insert(chatMessages).values([
       { userId: user.userId, role: "user", content: message },
-      { userId: user.userId, role: "assistant", content: completion.text },
+      { userId: user.userId, role: "assistant", content: replyText, consult: consult ?? null },
     ]);
 
-    return NextResponse.json({ reply: completion.text });
+    return NextResponse.json(consult ? { reply: replyText, consult } : { reply: replyText });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: e.status ?? 500 });
   }

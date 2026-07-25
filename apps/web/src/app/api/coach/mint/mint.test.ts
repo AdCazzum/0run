@@ -579,6 +579,9 @@ describe("POST /api/coach/mint", () => {
         // The avatar record is what makes the portrait show up in ENS clients,
         // and description/url are the ENSIP-5 keys those clients actually read.
         avatar: "https://0run.fun/api/coach/1/avatar",
+        a2aEndpoint: "https://0run.fun/api/coach/1/a2a",
+        // A2A_SIGNER_PRIVATE_KEY is unset in this test env, so a2aAccount() is null.
+        signer: null,
         url: "https://0run.fun/coach/1",
         description: expect.stringContaining("Kilian"),
         personality: "coach",

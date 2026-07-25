@@ -7,6 +7,10 @@ export type AssignSubnameRecords = {
   tokenId: string;
   endpoint: string;
   avatar: string;
+  a2aEndpoint: string;
+  // Address of A2A_SIGNER_PRIVATE_KEY, or null when that env is unset — the
+  // record is simply skipped then; the coach still mints and resolves.
+  signer: string | null;
   /** ENSIP-5 `description`: one line, for the clients that show it. */
   description: string;
   /** ENSIP-5 `url`: same destination as agent-endpoint[web], under the key every client reads. */
@@ -135,6 +139,12 @@ export async function assignSubname(label: string, owner: string, records: Assig
       // though the portrait is generated a moment later by another background
       // step; until then it simply 404s, and it starts working on its own.
       iface.encodeFunctionData("setText", [node, "avatar", records.avatar]),
+      // A2A: the machine-callable consult endpoint, and the executor key
+      // authorized to sign consults FROM this agent. Publishing the signer in
+      // ENS is what lets a receiving agent verify a request with nothing but
+      // a name resolution — ENS as the auth registry, not just naming.
+      iface.encodeFunctionData("setText", [node, "agent-endpoint[a2a]", records.a2aEndpoint]),
+      ...(records.signer ? [iface.encodeFunctionData("setText", [node, "agent-signer", records.signer])] : []),
       // `description` and `url` are the ENSIP-5 keys every ENS client already
       // renders. Without them the coach shows up in app.ens.domains with a face
       // and no idea who it is: `agent-context` and `agent-endpoint[web]` carry
@@ -168,13 +178,24 @@ export async function assignSubname(label: string, owner: string, records: Assig
  * Same receipt discipline as assignSubname: never throws.
  */
 export async function setTextRecord(fullName: string, key: string, value: string): Promise<Result> {
+  return setTextRecords(fullName, { [key]: value });
+}
+
+/**
+ * Writes/overwrites text records for an EXISTING `<label>.0run.eth` name in
+ * one multicall — the backfill path for records introduced after a coach was
+ * minted. Same never-throws receipt discipline as assignSubname; deliberately
+ * no setAddr (ownership may have moved; text records are ours to maintain).
+ */
+export async function setTextRecords(fullName: string, texts: Record<string, string>): Promise<Result> {
   try {
+    const parent = process.env.ENS_PARENT_NAME;
     const pk = process.env.ENS_OWNER_PRIVATE_KEY;
     const rpcUrl = process.env.ENS_SEPOLIA_RPC;
-    const parent = process.env.ENS_PARENT_NAME;
     if (!parent || !pk || !rpcUrl) {
       return { error: "configurazione ENS incompleta (ENS_PARENT_NAME/ENS_OWNER_PRIVATE_KEY/ENS_SEPOLIA_RPC)" };
     }
+    const node = namehash(fullName);
     // The resolver is the parent's, looked up live — a subname has no separate
     // entry to read (see the long note above).
     const resolverAddress = await client().getEnsResolver({ name: parent });
@@ -182,7 +203,10 @@ export async function setTextRecord(fullName: string, key: string, value: string
 
     const wallet = new ethers.Wallet(pk, new ethers.JsonRpcProvider(rpcUrl));
     const resolver = new ethers.Contract(resolverAddress, RESOLVER_ABI, wallet);
-    const tx = await resolver.setText(namehash(fullName), key, value);
+    const calls = Object.entries(texts).map(([key, value]) =>
+      resolver.interface.encodeFunctionData("setText", [node, key, value]),
+    );
+    const tx = await resolver.multicall(calls);
     const receipt = await tx.wait();
     return { name: fullName, txHash: receipt.hash };
   } catch (e: any) {

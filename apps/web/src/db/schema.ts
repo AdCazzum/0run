@@ -167,6 +167,13 @@ export const chatMessages = pgTable("chat_messages", {
   userId: integer("user_id").references(() => users.id).notNull(),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   content: text("content").notNull(),
+  // A2A consult attached to this assistant turn, if the coach consulted a
+  // colleague while answering (docs/superpowers/specs/2026-07-25-a2a-ens-design.md).
+  // The full cross-coach exchange, so the UI can re-render the consult block.
+  // Null on every normal turn and on all user turns.
+  consult: jsonb("consult").$type<{
+    to: string; toTokenId: string | null; question: string; reply: string; coachName: string;
+  } | null>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
