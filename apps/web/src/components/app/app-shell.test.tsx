@@ -14,19 +14,28 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
   useRouter: () => ({ push }),
 }));
+vi.mock("@/app/providers", () => ({ usePrivyReady: () => true }));
 
 import { AppShell } from "./app-shell";
 
 describe("AppShell", () => {
-  it("renders the three tabs twice (top nav + bottom bar) with the active marker on Runs", () => {
+  it("renders the shared site header — never a second one of its own", () => {
     render(<AppShell>content</AppShell>);
+    // One banner for the whole site: this shell used to carry its own, so
+    // crossing between app and public pages swapped the navigation out.
+    expect(screen.getAllByRole("banner")).toHaveLength(1);
+    // And the public sections in that header are reachable from inside the app.
+    expect(screen.getByRole("link", { name: /^coaches$/i }).getAttribute("href")).toBe("/coaches");
+  });
+
+  it("keeps the phone tab bar, with the active marker on Runs", () => {
+    render(<AppShell>content</AppShell>);
+    const bottomBar = screen.getAllByRole("navigation").at(-1)!;
     for (const label of ["Runs", "Upload", "Coach"]) {
-      // Anchored: the public "Coaches" link in the same bar would otherwise be
-      // counted as a third "Coach" tab.
-      expect(screen.getAllByRole("link", { name: new RegExp(`^${label}$`, "i") })).toHaveLength(2);
+      expect(bottomBar.textContent).toContain(label);
     }
-    const active = screen.getAllByRole("link", { name: /^Runs$/i });
-    for (const link of active) expect(link.getAttribute("aria-current")).toBe("page");
+    const runs = [...bottomBar.querySelectorAll("a")].find((a) => a.getAttribute("href") === "/dashboard")!;
+    expect(runs.getAttribute("aria-current")).toBe("page");
   });
 
   it("signs out via Privy then lands on the public page", async () => {

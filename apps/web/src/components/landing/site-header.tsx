@@ -22,20 +22,17 @@ const LINK_CLASS =
   "py-2 font-sans text-[10px] uppercase tracking-[0.25em] underline-offset-4 transition-colors duration-500 hover:text-orange";
 
 /**
- * Navigation for the public pages.
+ * The site's only header. Every page renders this one — public or signed-in,
+ * editorial or app.
  *
- * These pages used to have no chrome at all, so anyone who reached the coach
- * directory from inside the app was stranded there. They then had a header that
- * ignored who was reading, which is nearly as disorienting: a signed-in athlete
- * crossing from the dashboard to /coaches watched their tabs disappear. So the
- * right-hand side follows the reader — the app's own destinations when signed
- * in, a way in when not — while the left keeps the public sections that exist
- * for everyone.
+ * There used to be two: this one and the app's own bar. Crossing between them
+ * (dashboard → coaches) swapped the navigation out from under the reader, which
+ * is disorienting in a way no amount of styling fixes. The only thing that
+ * changes now is what a reader can actually reach: signed in, the app's three
+ * destinations and a way out; signed out, a way in.
  *
- * Deliberately NOT the app's AppShell: that one is the soft, 1100px-wide,
- * bottom-tab-bar register for a signed-in athlete on a phone. This is the
- * editorial register — full 1600px measure, hairline rules, typographic
- * labels — so the public site stays a public site.
+ * On phones the app tabs stay hidden here and live in AppShell's bottom bar
+ * instead — thumb-reachable, and the header would otherwise wrap to three rows.
  */
 export function SiteHeader() {
   const pathname = usePathname();
@@ -106,7 +103,7 @@ function SignedInLinks() {
     <>
       <span aria-hidden className="hidden h-4 w-px bg-navy/20 md:block" />
       {APP_TABS.map((tab) => (
-        <Link key={tab.href} href={tab.href} className={`${LINK_CLASS} text-navy hover:underline`}>
+        <Link key={tab.href} href={tab.href} className={`hidden md:inline-block ${LINK_CLASS} text-navy hover:underline`}>
           {tab.label}
         </Link>
       ))}
