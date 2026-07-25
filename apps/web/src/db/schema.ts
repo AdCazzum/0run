@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, serial, text, timestamp, unique } from "drizzle-orm/pg-core";
 import type { RunStats } from "@0run/shared";
 
 export type RunStep = "encrypt" | "store_gpx" | "update_memory" | "registry_tx" | "score" | "inference";
@@ -83,3 +83,44 @@ export const chatMessages = pgTable("chat_messages", {
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Piano B, Task 2 — events + World-ID-gated claims (see docs/superpowers/plans/
+// 2026-07-25-0run-social-identity.md and RunEvents.sol). Anyone can create an
+// event (permissionless), so a claim proves "one unique real person per
+// event", never attendance — the honest trust model is repeated in the UI,
+// never just here.
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
+  // RunEvents eventId (uint256, decimal string) — the on-chain anchor. Unique
+  // because it 1:1 maps to a row created right after a successful
+  // createEvent() tx (see api/events/route.ts).
+  onchainId: text("onchain_id").notNull().unique(),
+  creatorUserId: integer("creator_user_id").references(() => users.id).notNull(),
+  name: text("name").notNull(),
+  startsAt: timestamp("starts_at").notNull(),
+  endsAt: timestamp("ends_at").notNull(),
+  uri: text("uri"),
+  txHash: text("tx_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const claims = pgTable("claims", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").references(() => events.id).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  // World ID nullifier hash for THIS event's signal — the real anti-replay
+  // anchor (see lib/world/verify.ts). The UNIQUE constraint below is the
+  // actual defense against a proof being claimed twice, in Postgres, not in
+  // memory: a second insert attempt for the same (eventId, nullifierHash)
+  // conflicts and the route surfaces it as 409.
+  nullifierHash: text("nullifier_hash").notNull(),
+  // Set once the claimant's OWN wallet has submitted RunEvents.claim()
+  // on-chain and it confirmed (see api/events/[id]/claim/route.ts PATCH).
+  // Null between "World ID verified, backend co-signature issued" and "tx
+  // confirmed" — the row itself, inserted right after verification, is what
+  // reserves the nullifier and blocks a concurrent replay.
+  txHash: text("tx_hash"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  unique("claims_event_nullifier_unique").on(table.eventId, table.nullifierHash),
+]);
