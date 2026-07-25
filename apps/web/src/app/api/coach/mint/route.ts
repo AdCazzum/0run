@@ -8,6 +8,7 @@ import { serviceKey } from "@/lib/crypto/keys";
 import { prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { mintCoachOnChain, updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
 import { registerAgent } from "@/lib/erc8004/register";
+import { assignSubname, slugifyLabel } from "@/lib/ens/subname";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -214,6 +215,25 @@ export async function POST(req: Request) {
         .catch((e) => console.error("mint: background ERC-8004 registration crashed", e));
     };
 
+    // Fires the ENS subname assignment in the background, same lane as the two
+    // above: ENS lives on Sepolia — a different network from the coach's own
+    // chain, reachable only over its own (sometimes slow) RPC — so it can
+    // never slow down or fail the mint. assignSubname() itself never throws
+    // (see lib/ens/subname.ts, same receipt discipline as registerAgent).
+    const startBackgroundEns = (tokenId: string) => {
+      const label = slugifyLabel(name, tokenId);
+      assignSubname(label, user.wallet, { tokenId, endpoint: `https://0run.fun/coach/${tokenId}` })
+        .then(async (result) => {
+          if ("error" in result) {
+            console.error("mint: background ENS assignment failed", result.error);
+            return;
+          }
+          console.log("mint: background ENS assignment ok", result.name, result.txHash);
+          await db.update(coaches).set({ ensName: result.name }).where(eq(coaches.userId, user.userId));
+        })
+        .catch((e) => console.error("mint: background ENS assignment crashed", e));
+    };
+
     const finalizeMinted = async (tokenId: string, txHash: string) => {
       // Writing tokenId here is also what takes the row out of reach of the stale
       // reclaim above, so it must be part of this single update, never a later one.
@@ -222,6 +242,7 @@ export async function POST(req: Request) {
         .where(eq(coaches.userId, user.userId));
       startBackgroundUpload();
       startBackgroundRegistration(tokenId);
+      startBackgroundEns(tokenId);
     };
 
     const mintPromise = runMint(user.wallet, dataDescription, dataHash, memPrep.rootHash, profPrep.rootHash);

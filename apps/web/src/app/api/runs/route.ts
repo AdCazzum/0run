@@ -20,7 +20,7 @@ export async function GET(req: Request) {
       runs: rows,
       coach: coach && {
         id: coach.id, name: coach.name, personality: coach.personality,
-        tokenId: coach.tokenId, mintTx: coach.mintTx,
+        tokenId: coach.tokenId, mintTx: coach.mintTx, ensName: coach.ensName,
       },
     });
   } catch (e: any) {

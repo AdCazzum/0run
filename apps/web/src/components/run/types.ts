@@ -40,4 +40,8 @@ export type CoachSummary = {
   personality: string;
   tokenId: string;
   mintTx: string;
+  // Live ENS identity on Sepolia (see lib/ens/), null until the background
+  // step after mint assigns it — or forever, if it failed. Never a
+  // placeholder: EnsBadge re-resolves it live before showing anything.
+  ensName: string | null;
 };

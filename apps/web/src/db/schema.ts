@@ -44,6 +44,12 @@ export const coaches = pgTable("coaches", {
   // registration failed for is still a fully valid coach — this is a bonus
   // identity, never a requirement to mint.
   agentId: text("agent_id"),
+  // Live ENS identity (see lib/ens/subname.ts), e.g. "pedro.0run.eth" on
+  // Sepolia — a different network from the coach's own chain, assigned by a
+  // best-effort background step after the mint. Nullable for the same reason
+  // as agentId above: rows minted before this column existed predate it, and
+  // a coach ENS assignment failed for is still a fully valid coach.
+  ensName: text("ens_name"),
 });
 
 export const runs = pgTable("runs", {

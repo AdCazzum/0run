@@ -17,6 +17,14 @@ vi.mock("@/lib/zerog/contracts", async (orig) => ({
 vi.mock("@/lib/erc8004/register", () => ({
   registerAgent: vi.fn(async () => ({ error: "not exercised in this test" })),
 }));
+// Same fire-and-forget bonus step, different network (Sepolia): mocked so
+// these tests never make a real RPC call. slugifyLabel is the real, pure
+// export — no reason to fake it, and the route's label-computation is worth
+// exercising for real.
+vi.mock("@/lib/ens/subname", async (orig) => ({
+  ...(await orig()) as object,
+  assignSubname: vi.fn(async () => ({ error: "not exercised in this test" })),
+}));
 
 // Reservation semantics under test: a coaches row keyed by userId, with an
 // empty tokenId meaning "reserved, mint not confirmed" (see the invariant
@@ -70,6 +78,7 @@ vi.mock("@/db", () => ({
 
 import { mintCoachOnChain, updateRegistry } from "@/lib/zerog/contracts";
 import { registerAgent } from "@/lib/erc8004/register";
+import { assignSubname } from "@/lib/ens/subname";
 import { _setDepsForTest } from "@/lib/zerog/storage";
 
 function req(body: any = { name: "Kilian", personality: "coach", userKeyHex: "aa".repeat(32) }) {
@@ -84,6 +93,7 @@ describe("POST /api/coach/mint", () => {
     vi.mocked(mintCoachOnChain).mockReset().mockImplementation(async () => ({ tokenId: "1", txHash: "0xmint" }));
     vi.mocked(updateRegistry).mockReset().mockImplementation(async () => "0xreg");
     vi.mocked(registerAgent).mockReset().mockImplementation(async () => ({ error: "not exercised in this test" }));
+    vi.mocked(assignSubname).mockReset().mockImplementation(async () => ({ error: "not exercised in this test" }));
     // Root hashes are computed locally (fast, no network) — this is exactly
     // the fix under test, so the mock doUpload is never expected to be
     // awaited by the request/response cycle itself (only by the
@@ -271,5 +281,34 @@ describe("POST /api/coach/mint", () => {
     resolveRegister({ agentId: "148", txHash: "0xreg8004" });
     for (let i = 0; i < 10; i++) await Promise.resolve();
     expect(dbState.coaches.get(1)?.agentId).toBe("148");
+  });
+
+  it("assegnazione ENS fallisce in background → il mint resta 200, nessun ensName scritto", async () => {
+    vi.mocked(assignSubname).mockImplementation(async () => ({ error: "sepolia rpc down" }));
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    // Give the fire-and-forget background task a turn to settle.
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(dbState.coaches.get(1)?.ensName).toBeUndefined();
+  });
+
+  it("assegnazione ENS riesce in background → ensName persistito sulla riga coaches DOPO la risposta, con label derivata dal nome del coach", async () => {
+    let resolveEns!: (v: { name: string; txHash: string }) => void;
+    vi.mocked(assignSubname).mockImplementation(
+      () => new Promise((resolve) => { resolveEns = resolve; }),
+    );
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    // Not yet settled: the response must not have waited on it.
+    expect(dbState.coaches.get(1)?.ensName).toBeUndefined();
+    expect(vi.mocked(assignSubname)).toHaveBeenCalledWith(
+      "kilian", "0x" + "22".repeat(20), { tokenId: "1", endpoint: "https://0run.fun/coach/1" },
+    );
+
+    resolveEns({ name: "kilian.0run.eth", txHash: "0xenstx" });
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(dbState.coaches.get(1)?.ensName).toBe("kilian.0run.eth");
   });
 });

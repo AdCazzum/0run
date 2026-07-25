@@ -216,3 +216,39 @@ Script throwaway in `/tmp` (mai committato) ha importato direttamente `apps/web/
   - `getMetadata(148, "0run.tokenId")` decodifica UTF-8 a `"3"` ✓ (il collegamento on-chain tra le due identità funziona)
 
 **Esito: SUCCESSO.** Nessun revert, nessuna ABI indovinata — l'interfaccia usata è stata confermata contro il sorgente, contro il README del deploy 0G, e contro il bytecode realmente in esecuzione su Galileo prima ancora di scrivere `register.ts`.
+
+## Identità ENS dell'agente coach — subname live su Sepolia (Piano B, Task 3)
+
+**Data:** 2026-07-25
+**Contesto:** ogni coach mintato riceve `<slug>.0run.eth` su Sepolia (ENS non esiste su 0G — rete separata, dichiarata come tale in UI), con text record ENSIP-26 (`agent-context`, `agent-endpoint[web]`) più una chiave custom `0run:inft` (`chainId:contract:tokenId`) che punta indietro all'agente on-chain reale. Il bando ENS richiede esplicitamente "no hard-coded values": `resolveCoachEns()` fa una vera `eth_call` a ogni chiamata, senza cache né fallback finti (vedi `apps/web/src/lib/ens/resolve.ts` e il test dedicato che dimostra risultato vuoto — mai un placeholder — quando il client RPC rifiuta).
+
+### Meccanismo di assegnazione — NON NameWrapper, NON ENSRegistry: stabilito sondando la chain, non indovinato
+
+Il piano ipotizzava un binario "0run.eth è wrappato in NameWrapper oppure no", da verificare leggendo `owner()` sul registro. La realtà è più interessante:
+
+1. **Probe 1 — registro ENS canonico** (`0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e`, stesso indirizzo su mainnet e Sepolia): `eth_call` diretto (non tramite viem, per escludere qualunque interpretazione ad alto livello) a `owner(namehash("0run.eth"))` e `resolver(namehash("0run.eth"))` → **entrambi restituiscono l'indirizzo zero**. Per confronto, `owner(namehash("eth"))` e `owner(namehash(""))` restituiscono indirizzi sensati (il Base Registrar `.eth` e il root controller Sepolia), quindi il registro e l'indirizzo usato sono corretti — è proprio il nodo `0run.eth` a non avere alcuna voce nel registro base. Questo esclude *sia* `NameWrapper.setSubnodeRecord` *sia* `ENSRegistry.setSubnodeRecord`: entrambi richiedono `msg.sender == owner(node)`, e qui `owner(node)` è `address(0)` — condizione che nessun firmatario reale può soddisfare.
+2. **Eppure la risoluzione live funziona** (confermato dal controller e riverificato qui): `publicClient.getEnsAddress/getEnsText({name: "0run.eth"})` di viem (azioni ENSIP-10 basate su `UniversalResolver`) rispondono correttamente. Il resolver restituito da `getEnsResolver` è un contratto minimal-proxy EIP-1167 di 78 byte (`0x4C67b8fb2e6e004dB644919fAEe12dcDDD59354f`).
+3. **Identificata l'implementazione** via l'API di verifica sorgente di Blockscout Sepolia (`GET /api/v2/smart-contracts/<implementazione>`, nessuna chiave richiesta): il proxy punta a `0x917c561a74df398646e06f3ffaa51db8e8330c5`, sorgente verificato come **`PermissionedResolver`** — il resolver di nuova generazione del monorepo ufficiale `@ens/contracts`, con permessi basati su ruoli (`EnhancedAccessControl`) invece della classica ownership da registro. I record vivono in una mappa piatta `node => Record` **dentro il resolver stesso**: non serve nessuna "registrazione" separata del subname — basta poter chiamare `setAddr`/`setText` con quel namehash, a patto di avere il ruolo giusto.
+4. **Verificato on-chain chi ha i permessi**: `resource(node, part) = keccak256(node, part)`; i ruoli concessi su `ROOT_RESOURCE` (risorsa `0x0`, assegnata all'admin in `initialize(admin, roleBitmap)`) fanno da fallback per **qualunque** altra risorsa sullo stesso resolver (`EnhancedAccessControl.hasRoles`: `(_roles[ROOT_RESOURCE][account] | _roles[resource][account]) & roleBitmap == roleBitmap`). Lettura diretta: `roles(ROOT_RESOURCE, ENS_OWNER_ADDRESS)` su questo resolver → bitmap **tutti-1** (admin completo); `hasRootRoles(ROLE_SET_ADDR | ROLE_SET_TEXT, ENS_OWNER_ADDRESS)` → `true`. Quindi `ENS_OWNER_ADDRESS` può scrivere record per **qualunque** namehash servito da questo resolver, subname inclusi, senza alcuna transazione di "creazione" separata — la risoluzione wildcard ENSIP-10 (questo stesso resolver risponde a `resolve()` per l'intero sottoalbero `*.0run.eth`) è ciò che fa risolvere un record chiave-per-namehash-del-subname.
+
+**Implementazione** (`apps/web/src/lib/ens/subname.ts`): `assignSubname(label, owner, records)` cerca il resolver di `0run.eth` **live** (`getEnsResolver` — mai un indirizzo hard-coded, così l'integrazione sopravvive a un'eventuale migrazione del resolver), poi chiama `resolver.multicall([setAddr, setText×3])` in un'unica transazione firmata da `ENS_OWNER_PRIVATE_KEY`.
+
+### Assegnazione reale su Sepolia — non solo mock
+
+Script throwaway in `/tmp` (mai committato) ha importato direttamente `apps/web/src/lib/ens/subname.ts` e `apps/web/src/lib/ens/resolve.ts` (nessuna modifica ai file). Prima uno smoke test su un label usa-e-getta (`zzz-probe-test.0run.eth`, verificato risolvere correttamente e poi lasciato su Sepolia testnet — nessun costo, nessun danno), poi l'assegnazione reale richiesta per il coach di produzione:
+
+- `assignSubname("pedro", "0x7AEa10Ebc47CC8F2eb359B2e19a6286Ef36A59e6", { tokenId: "3", endpoint: "https://0run.fun/coach/3" })` → tx [`0xefe5ae1cc43feaa045ff5227b6a59aa0e32156fff8ff5960febcfc5fb57278e2`](https://sepolia.etherscan.io/tx/0xefe5ae1cc43feaa045ff5227b6a59aa0e32156fff8ff5960febcfc5fb57278e2) (status 1, block 11347170, gasUsed 293642, `to` = il resolver di `0run.eth` trovato live).
+- Verifica di lettura **indipendente**, tramite `resolveCoachEns("pedro.0run.eth")` (stesso modulo di produzione usato dal badge in UI):
+  ```json
+  {
+    "address": "0x7AEa10Ebc47CC8F2eb359B2e19a6286Ef36A59e6",
+    "records": {
+      "agent-context": "0run running coach — intelligent NFT #3 on 0G Galileo, encrypted memory across every run",
+      "0run:inft": "16602:0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e:3",
+      "agent-endpoint[web]": "https://0run.fun/coach/3"
+    }
+  }
+  ```
+- Controprova anti-hard-coding: `resolveCoachEns("this-definitely-does-not-exist-zzz.0run.eth")` (un nome mai assegnato) → `{"address": null, "records": {}}`, non un valore inventato.
+
+**Esito: SUCCESSO.** `pedro.0run.eth` risolve dal vivo, sull'indirizzo del wallet embedded dell'utente, con tutti e tre i text record scritti e con `0run:inft` che punta esattamente a `chainId 16602 : AgentNFT 0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e : tokenId 3` — l'agente reale già minato su 0G Galileo.

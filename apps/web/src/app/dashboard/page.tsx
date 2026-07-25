@@ -7,6 +7,7 @@ import { explorerTx } from "@0run/shared";
 import { Button } from "@/components/ui/button";
 import { Chat } from "@/components/run/chat";
 import { RunCard } from "@/components/run/run-card";
+import { EnsBadge } from "@/components/coach/ens-badge";
 import type { CoachSummary, RunRow } from "@/components/run/types";
 
 type Feed = { runs: RunRow[]; coach: CoachSummary | null };
@@ -84,6 +85,9 @@ export default function DashboardPage() {
           <p className="mt-4 font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
             {feed.coach.personality.replace("_", " ")} · agent #{feed.coach.tokenId}
           </p>
+          <div className="mt-3">
+            <EnsBadge name={feed.coach.ensName} />
+          </div>
           {feed.coach.mintTx && (
             <a
               className="mt-4 inline-block py-3 font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
