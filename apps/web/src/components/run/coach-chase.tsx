@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   WORLD, newGame, tick, runnerBox, obstacleBox, scoreMeters,
-  type GameState, type Input,
+  type GameState,
 } from "@/lib/game/coach-chase";
 
 // Palette from globals.css — canvas can't use Tailwind classes.
@@ -103,7 +103,7 @@ function drawSprite(ctx: CanvasRenderingContext2D, art: string[], x: number, y: 
 export function CoachChase() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState>(newGame());
-  const inputRef = useRef<Input & { jumpQueued: boolean }>({ jump: false, duck: false, jumpQueued: false });
+  const inputRef = useRef<{ duck: boolean; jumpQueued: boolean }>({ duck: false, jumpQueued: false });
   const bestRef = useRef(0);
   // null = not yet known (avoids SSR/client mismatch); true = show the game.
   const [active, setActive] = useState<boolean | null>(null);
@@ -119,9 +119,17 @@ export function CoachChase() {
     if (!canvas || !ctx) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // Don't hijack Space/arrows from a focused link, button, or form field —
+      // e.g. tabbing to "all runs" or the delete button and pressing Space
+      // must activate that control, not the game.
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest("a,button,input,textarea,select,[contenteditable]")) return;
+
       if (e.code === "Space" || e.code === "ArrowUp") {
         e.preventDefault();
-        inputRef.current.jumpQueued = true;
+        // OS key auto-repeat fires keydown repeatedly while held; without this
+        // guard, holding Space through death auto-restarts the very next tick.
+        if (!e.repeat) inputRef.current.jumpQueued = true;
       }
       if (e.code === "ArrowDown") {
         e.preventDefault();
@@ -221,7 +229,7 @@ function draw(ctx: CanvasRenderingContext2D, s: GameState, best: number, now: nu
   if (s.ducking) {
     drawSprite(ctx, RUNNER_DUCK, rb.x - 2, WORLD.groundY - RUNNER_DUCK.length * PX, NAVY);
   } else {
-    const art = s.airborne ? RUNNER_A : stride ? RUNNER_A : RUNNER_B;
+    const art = s.status === "dead" ? RUNNER_A : s.airborne ? RUNNER_A : stride ? RUNNER_A : RUNNER_B;
     drawSprite(ctx, art, rb.x - 2, rb.y, NAVY);
   }
 
