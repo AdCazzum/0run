@@ -1,8 +1,32 @@
 import { NextResponse } from "next/server";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { runs } from "@/db/schema";
+import { coaches, runs } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { initialSteps, processRun } from "@/lib/coach/pipeline";
+
+/** Feed for the dashboard: the caller's runs, newest first, plus the coach header. */
+export async function GET(req: Request) {
+  try {
+    const user = await requireUser(req);
+    const [rows, coachRows] = await Promise.all([
+      db.select().from(runs).where(eq(runs.userId, user.userId)).orderBy(desc(runs.createdAt)),
+      db.select().from(coaches).where(eq(coaches.userId, user.userId)),
+    ]);
+    // A row still holding the empty-tokenId placeholder is only a mint reservation
+    // (see the mint route), so the dashboard must treat it as "no coach yet".
+    const coach = coachRows.find((c) => c.tokenId !== "") ?? null;
+    return NextResponse.json({
+      runs: rows,
+      coach: coach && {
+        id: coach.id, name: coach.name, personality: coach.personality,
+        tokenId: coach.tokenId, mintTx: coach.mintTx,
+      },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: e.status ?? 500 });
+  }
+}
 
 export async function POST(req: Request) {
   try {
