@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useState } from "react";
 import { usePrivyReady } from "@/app/providers";
+import { forgetUserKey } from "@/lib/client/useUserKey";
 
 const SECTIONS = [
   { href: "/coaches", label: "Coaches" },
@@ -95,6 +96,10 @@ function SignedInLinks() {
     try {
       await logout();
     } finally {
+      // The data key derived from this person's signature is held in memory for
+      // the session; signing out has to drop it, or the next person to log in
+      // on this tab starts with it still there.
+      forgetUserKey();
       router.push("/");
     }
   }

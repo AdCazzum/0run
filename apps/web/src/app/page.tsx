@@ -10,14 +10,16 @@ import { PageChrome } from "@/components/ui/page-chrome";
 // pages only — inside the app the background stays clean.
 export default function Home() {
   return (
-    <main>
+    <>
       <PageChrome />
       <SiteHeader />
-      <Hero />
-      <Manifesto />
-      <HowItWorks />
-      <BenefitsSection />
+      <main>
+        <Hero />
+        <Manifesto />
+        <HowItWorks />
+        <BenefitsSection />
+      </main>
       <SiteFooter />
-    </main>
+    </>
   );
 }

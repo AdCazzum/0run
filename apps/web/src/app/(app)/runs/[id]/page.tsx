@@ -53,7 +53,10 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
   // Any failure here (no cipher stored, wrong/missing key, network error)
   // just leaves feelings unset — never a placeholder implying data exists.
   useEffect(() => {
-    if (!run?.id) return;
+    // No note stored → nothing to decrypt, so do not ask the athlete's wallet
+    // for a signature at all. Asking for one the moment a page loads, for
+    // nothing, is how this page ended up showing a wallet error dialog.
+    if (!run?.id || !run.feelingsCipher) return;
     let cancelled = false;
     (async () => {
       try {
@@ -71,7 +74,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       }
     })();
     return () => { cancelled = true; };
-  }, [run?.id, getKeyHex]);
+  }, [run?.id, run?.feelingsCipher, getKeyHex]);
 
   if (!ready) return null;
   if (error) return <Label>{error}</Label>;

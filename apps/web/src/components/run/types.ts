@@ -28,6 +28,10 @@ export type RunRow = {
   // that path is a single provider on a testnet and can be unavailable,
   // which must never fail the run itself. scoreVerified follows the same
   // "true" | "false" | "unavailable" convention as verifiedTee above.
+  // Ciphertext of the "how did it feel" note, as stored (never plaintext). The
+  // page uses it only as a yes/no: when it is null there is nothing to decrypt,
+  // so no wallet signature is requested at all.
+  feelingsCipher: string | null;
   effortScore: number | null;
   scoreNote: string | null;
   scoreVerified: string | null;
