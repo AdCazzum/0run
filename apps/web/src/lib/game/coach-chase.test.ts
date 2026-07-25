@@ -28,7 +28,7 @@ describe("coach-chase game logic", () => {
     s.spawnIn = 100000; // no obstacles in this test
     tick(s, 0.016, JUMP, rng0);
     expect(s.airborne).toBe(true);
-    let apexFeet = WORLD.groundY;
+    let apexFeet: number = WORLD.groundY;
     for (let i = 0; i < 100 && s.airborne; i++) {
       tick(s, 0.016, IDLE, rng0);
       apexFeet = Math.min(apexFeet, s.runnerY);
