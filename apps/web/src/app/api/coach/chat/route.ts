@@ -132,7 +132,9 @@ export async function POST(req: Request) {
     // receiving a2a route. Best-effort throughout — a failed consult means
     // the coach answers alone and says so, never an error to the athlete.
     let replyText = completion.text;
-    let consult: { to: string; toTokenId: string | null; question: string; reply: string; coachName: string } | undefined;
+    let consult:
+      | { to: string; toTokenId: string | null; question: string; reply: string; coachName: string; humanBacked: { humanId: string } | null }
+      | undefined;
 
     const { marker } = parseConsultMarker(completion.text);
     // The model can hallucinate a coach that isn't in the roster we gave it
@@ -161,6 +163,7 @@ export async function POST(req: Request) {
           question: marker.question,
           reply: result.reply,
           coachName: result.coach.name,
+          humanBacked: result.humanBacked,
         };
       }
     } else {

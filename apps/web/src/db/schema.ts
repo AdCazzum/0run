@@ -173,6 +173,7 @@ export const chatMessages = pgTable("chat_messages", {
   // Null on every normal turn and on all user turns.
   consult: jsonb("consult").$type<{
     to: string; toTokenId: string | null; question: string; reply: string; coachName: string;
+    humanBacked?: { humanId: string } | null;
   } | null>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
