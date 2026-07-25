@@ -62,6 +62,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 );
               })}
             </nav>
+            {/* Public coach directory — deliberately outside TABS/the tab bar
+                grid (another session owns that structure): every agent that
+                exists on-chain, discoverable by anyone, not just the signed-in
+                athlete. Kept visible at every breakpoint, unlike the tabs. */}
+            <Link
+              href="/coaches"
+              className="py-4 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean transition-colors duration-500 hover:text-orange"
+            >
+              Directory
+            </Link>
             {ready && authenticated && (
               <button
                 onClick={() => void handleSignOut()}

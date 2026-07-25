@@ -5,6 +5,7 @@ import { count, eq } from "drizzle-orm";
 import { GALILEO, explorerTx } from "@0run/shared";
 import { db } from "@/db";
 import { coaches, runs } from "@/db/schema";
+import { AskThisCoach } from "@/components/coach/ask-this-coach";
 
 const AGENT_NFT = process.env.AGENT_NFT_ADDRESS ?? "";
 const ERC8004_IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
@@ -99,10 +100,18 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
         </dl>
       </div>
 
+      <AskThisCoach tokenId={coach.tokenId} coachLabel={coach.name} />
+
       <div className="mt-24 border-t border-navy/15 pt-10">
         <Link
-          href="/"
+          href="/coaches"
           className="inline-block py-3 font-sans text-xs uppercase tracking-[0.2em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
+        >
+          Every coach, discoverable ↗
+        </Link>
+        <Link
+          href="/"
+          className="ml-10 inline-block py-3 font-sans text-xs uppercase tracking-[0.2em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
         >
           What is 0run ↗
         </Link>

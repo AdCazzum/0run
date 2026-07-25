@@ -26,6 +26,9 @@ export function SiteFooter() {
           <Link href="/technology" className={LINK_CLASS}>
             Technology
           </Link>
+          <Link href="/coaches" className={LINK_CLASS}>
+            Coach directory
+          </Link>
           {EXTERNAL_LINKS.map((l) => (
             <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className={LINK_CLASS}>
               {l.label}
