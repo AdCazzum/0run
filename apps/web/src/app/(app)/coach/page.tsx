@@ -6,6 +6,7 @@ import { getAccessToken, usePrivy } from "@privy-io/react-auth";
 import { explorerTx } from "@0run/shared";
 import { Button } from "@/components/ui/button";
 import { Chat } from "@/components/run/chat";
+import { CoachBadge } from "@/components/crew/coach-badge";
 import type { CoachSummary } from "@/components/run/types";
 
 /**
@@ -54,6 +55,10 @@ export default function CoachPage() {
         <div className="mt-8">
           <Link href="/mint"><Button variant="primary" className="w-full md:w-auto">Mint your coach</Button></Link>
         </div>
+        {/* The self-declared human-coach badge is about the person behind this
+            profile, not the AI agent above — it doesn't need a minted coach to
+            be reachable. */}
+        <CoachBadge />
       </section>
     );
   }
@@ -81,6 +86,7 @@ export default function CoachPage() {
             health data · not connected
           </span>
         </div>
+        <CoachBadge />
       </header>
 
       <Chat />

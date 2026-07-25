@@ -104,6 +104,21 @@ export const events = pgTable("events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Piano B, Task 5 — self-declared coach badge (see docs/superpowers/specs/
+// 2026-07-25-real-coach-spec.md and docs/superpowers/plans/
+// 2026-07-25-0run-social-identity.md). World ID proves a unique real human,
+// never a qualified coach, so this table only ever backs a badge that reads
+// "coach · autodichiarato" (self-declared) — never "verified". One claim per
+// account (userId UNIQUE) and the nullifier itself is UNIQUE across every
+// claim, which is the actual anti-replay defense (Postgres constraint, not
+// application logic) against the same World-verified human claiming twice.
+export const coachClaims = pgTable("coach_claims", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull().unique(),
+  nullifierHash: text("nullifier_hash").notNull().unique(),
+  claimedAt: timestamp("claimed_at").defaultNow().notNull(),
+});
+
 export const claims = pgTable("claims", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").references(() => events.id).notNull(),
