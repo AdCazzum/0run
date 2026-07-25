@@ -22,6 +22,19 @@ Report del coach su un GPX reale, prompt completo, profilo `drill_sergeant`:
 
 Due conseguenze. Primo: **non serve impostare `max_tokens`** — il budget di default del router copre anche un modello reasoning su prompt pieni (il dubbio era legittimo: con `max_tokens: 20` lo stesso modello restituisce contenuto *vuoto* perché spende tutto in ragionamento). Secondo: `x_0g_trace` è l'artefatto che il bando 0G chiede come prova d'uso di 0G Compute — va mostrato nella submission.
 
+### Router contro Direct: attestazione o qualità, misurato
+
+| | Router (`glm-5.2`) | Direct (`qwen2.5-omni-7b`) |
+|---|---|---|
+| Attestazione per risposta | assente (solo provider TEE-acknowledged) | **`processResponse` → `true`** |
+| Latenza | 19,5 s | **1,07 s** |
+| Pagamento | credito prepagato su pc.0g.ai | on-chain dalla tesoreria (ledger 4 OG) |
+| Qualità del coaching | usa la memoria, resta in personaggio: *"Stesso run, stessi numeri, zero progresso. Svegliati."* | **ignora il contesto**: *"non so come stai procedendo senza vedere i dati"* — con i dati presenti nel prompt |
+
+La rete Direct espone **un solo modello chat** (verificato con `broker.inference.listService()`: 2 servizi totali, uno è image-edit). Quindi la scelta è secca e va dichiarata: l'unico path che attesta crittograficamente ogni risposta è anche quello che produce il coach peggiore. `INFERENCE_PREFER` decide l'ordine e l'altro path resta fallback automatico, così la configurazione è una decisione di prodotto e non un vincolo del codice.
+
+Nota di implementazione costata tempo: la build **ESM dell'SDK Compute è rotta** (`does not provide an export named 'C'` su 0.9.0). Va caricata la build CommonJS via `createRequire`, altrimenti abilitare il path Direct fallisce a runtime e ricade silenziosamente sul router — cioè sembra funzionare finché il router ha credito.
+
 ## Storage — l'upload funziona, la lettura no (nel tempo di una demo)
 
 Questo è il vincolo che ha cambiato l'architettura.
