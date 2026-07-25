@@ -56,9 +56,15 @@ async function authed(path: string, init?: RequestInit) {
  * binding on World Chain. Until now this required running agentkit-cli by
  * hand; the flow below is that CLI's exact protocol, in the page where the
  * human-backing gate refuses.
+ *
+ * `hideWhenRegistered` is the nudge mode (dashboard): render nothing while
+ * checking and nothing once already registered — the widget only appears when
+ * there is something the person still has to do. If they complete the flow
+ * right here, the ✓ stays visible as feedback for the session.
  */
-export function HumanBackingWidget() {
+export function HumanBackingWidget({ hideWhenRegistered = false }: { hideWhenRegistered?: boolean } = {}) {
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [started, setStarted] = useState(false);
   const cancelled = useRef(false);
   useEffect(() => {
     cancelled.current = false;
@@ -94,6 +100,7 @@ export function HumanBackingWidget() {
   }, [loadStatus]);
 
   async function start() {
+    setStarted(true);
     setState({ kind: "loading" });
     const status = await loadStatus();
     if (!status || status.registered || !status.nonce || !status.wallet) return;
@@ -159,9 +166,11 @@ export function HumanBackingWidget() {
   }
 
   if (state.kind === "loading") {
+    if (hideWhenRegistered && !started) return null;
     return <p className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">checking human backing…</p>;
   }
   if (state.kind === "registered") {
+    if (hideWhenRegistered && !started) return null;
     return (
       <p className="font-sans text-xs uppercase tracking-[0.25em] text-ocean">
         human-backed ✓ <span className="text-navy/60">World App verified, unique human</span>
