@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CoachMemoryV1Schema, HealthSnapshot, initialMemory } from "@0run/shared";
-import { appendRun, buildProfile, parseMemory, setHealthSnapshot } from "./memory";
+import { appendRun, buildProfile, parseMemory, removeRun, setExpertise, setHealthSnapshot } from "./memory";
 import { buildChatMessages, buildReportMessages, ReportSchema, systemPrompt } from "./prompts";
 
 const run = {
@@ -53,6 +53,48 @@ describe("memory", () => {
     const otherSnapshot = { ...healthSnapshot, windowDays: 1, days: [healthSnapshot.days[0]] };
     const m3 = setHealthSnapshot(m2, otherSnapshot);
     expect(m3.privateLayer.healthSnapshot?.days).toHaveLength(1); // replace, not merge
+  });
+});
+
+describe("removeRun / setExpertise", () => {
+  const second = { ...run, gpxRoot: "0xsecondgpxroot", startedAt: "2026-07-21T07:30:00.000Z" };
+
+  it("toglie SOLO la corsa indicata, per gpxRoot", () => {
+    const { memory } = initialMemory("K", "coach");
+    const two = appendRun(appendRun(memory, run), second);
+    const left = removeRun(two, run.gpxRoot);
+    expect(left.privateLayer.runs.map((r) => r.gpxRoot)).toEqual(["0xsecondgpxroot"]);
+  });
+
+  it("cancellare una corsa non tocca i dati sanitari né il brief", () => {
+    const { memory } = initialMemory("K", "coach", "trail ultras");
+    const withHealth = setHealthSnapshot(appendRun(memory, run), healthSnapshot);
+    const left = removeRun(withHealth, run.gpxRoot);
+    expect(left.privateLayer.healthSnapshot).not.toBeNull();
+    expect(left.coach.expertise).toBe("trail ultras");
+    expect(left.privateLayer.runs).toHaveLength(0);
+  });
+
+  it("una corsa che non c'è non cambia nulla (idempotente)", () => {
+    const { memory } = initialMemory("K", "coach");
+    const one = appendRun(memory, run);
+    expect(removeRun(one, "0xmai-esistito")).toEqual(one);
+  });
+
+  it("il brief si riscrive e si può azzerare", () => {
+    const { memory } = initialMemory("K", "coach", "prima versione");
+    const rewritten = setExpertise(memory, "seconda versione");
+    expect(rewritten.coach.expertise).toBe("seconda versione");
+    // Azzerarlo è un'intenzione legittima: il campo sparisce, non resta vuoto.
+    const cleared = setExpertise(rewritten, "   ");
+    expect(cleared.coach.expertise).toBeUndefined();
+    expect(buildProfile(cleared).expertise).toBeUndefined();
+  });
+
+  it("riscrivere il brief non tocca le corse", () => {
+    const { memory } = initialMemory("K", "coach");
+    const one = appendRun(memory, run);
+    expect(setExpertise(one, "nuovo").privateLayer.runs).toHaveLength(1);
   });
 });
 

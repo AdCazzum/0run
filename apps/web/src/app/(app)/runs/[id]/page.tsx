@@ -7,6 +7,7 @@ import { Chat } from "@/components/run/chat";
 import { PipelineSteps } from "@/components/run/pipeline-steps";
 import { ReportView } from "@/components/run/report-view";
 import type { RunRow } from "@/components/run/types";
+import { DeleteRun } from "@/components/run/delete-run";
 import { useUserKey } from "@/lib/client/useUserKey";
 
 // Leaflet touches window at import time, so the map must never be part of the
@@ -143,6 +144,8 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       </div>
 
       {run.status === "done" && <Chat runId={run.id} />}
+
+      <DeleteRun runId={run.id} />
     </section>
   );
 }

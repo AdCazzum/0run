@@ -48,6 +48,8 @@ export type CoachSummary = {
   // step after mint assigns it — or forever, if it failed. Never a
   // placeholder: EnsBadge re-resolves it live before showing anything.
   ensName: string | null;
+  /** What this coach knows, in its athlete's words. Null when they wrote nothing. */
+  expertise: string | null;
   // Health data coverage (docs/superpowers/specs/2026-07-25-health-data-spec.md)
   // — METADATA ONLY, mirrors coaches.health* on the server: never a value.
   // Null until the athlete uploads a health export via /api/health-data.

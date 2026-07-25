@@ -42,6 +42,42 @@ export function appendRun(memory: CoachMemory, run: RunSummary): CoachMemory {
 }
 
 /**
+ * Removes a run from the private layer, identified by the GPX root that was
+ * anchored when it was stored. Pure, mirrors appendRun.
+ *
+ * What this can and cannot undo, stated once here because the UI repeats it to
+ * the athlete: the run leaves the coach's memory, so it stops shaping any
+ * future advice, and the rewritten memory gets a new hash anchored on-chain.
+ * The encrypted GPX blob already written to 0G Storage does NOT disappear —
+ * storage there is immutable and nobody, us included, can delete it. It stays
+ * unreadable without the athlete's own key, and nothing points at it any more.
+ */
+export function removeRun(memory: CoachMemory, gpxRoot: string): CoachMemory {
+  return CoachMemorySchema.parse({
+    ...memory,
+    privateLayer: {
+      ...memory.privateLayer,
+      runs: memory.privateLayer.runs.filter((r) => r.gpxRoot !== gpxRoot),
+    },
+  });
+}
+
+/**
+ * Rewrites the coach's brief — what it knows, in the athlete's own words.
+ * Pure, mirrors setHealthSnapshot. An empty string clears it: "I no longer
+ * want to say anything about this coach" is a real intention, and it must be
+ * expressible.
+ */
+export function setExpertise(memory: CoachMemory, expertise: string): CoachMemory {
+  const brief = expertise.trim();
+  const { expertise: _dropped, ...coach } = memory.coach;
+  return CoachMemorySchema.parse({
+    ...memory,
+    coach: { ...coach, ...(brief ? { expertise: brief } : {}) },
+  });
+}
+
+/**
  * Replaces the private-layer health snapshot wholesale (last export wins —
  * see docs/superpowers/specs/2026-07-25-health-data-spec.md §5: no merging
  * of overlapping windows across uploads). Pure, mirrors appendRun.

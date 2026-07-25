@@ -7,6 +7,7 @@ import { explorerTx } from "@0run/shared";
 import { Button } from "@/components/ui/button";
 import { Chat } from "@/components/run/chat";
 import { CoachBadge } from "@/components/crew/coach-badge";
+import { CoachBrief } from "@/components/coach/coach-brief";
 import { HealthDataStatus } from "@/components/coach/health-data-status";
 import type { CoachSummary } from "@/components/run/types";
 
@@ -87,6 +88,13 @@ export default function CoachPage() {
         </div>
         <CoachBadge />
       </header>
+
+      {/* The brief is part of who the coach is, so it lives with its identity —
+          and it is editable here because an athlete's idea of what their coach
+          should know changes as they train. */}
+      <div className="mt-8 max-w-md border-b border-navy/15 pb-8">
+        <CoachBrief expertise={coach.expertise} onSaved={load} />
+      </div>
 
       <Chat />
     </section>
