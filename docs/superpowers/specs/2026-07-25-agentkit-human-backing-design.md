@@ -1,10 +1,11 @@
 # Human-backed agents on the A2A network (AgentKit / World track)
 
 Date: 2026-07-25
-Status: DRAFT v2 — revised against the A2A implementation as merged on main
-(`baf4d28`, reviewed at `919fdc4`) and merged into this branch. v1 was written
-against the A2A design doc before the code existed; three of its calls are corrected
-below (see "Corrections from v1"). Ready for Ivan's review.
+Status: APPROVED by Ivan (conversation review, 2026-07-25) — v2 revised against the
+A2A implementation as merged on main (`baf4d28`, reviewed at `919fdc4`) and merged
+into this branch. v1 was written against the A2A design doc before the code existed;
+three of its calls are corrected below (see "Corrections from v1"). All open
+decisions resolved — see the final section.
 
 ## Goal
 
@@ -254,7 +255,7 @@ the chat says the colleague could not be reached and the athlete's turn complete
 ```bash
 # --- AgentKit / AgentBook (human-backed agents, World track) ---
 AGENTBOOK_RELAY_URL=            # default https://x402-worldchain.vercel.app — relay gasless per la registrazione
-A2A_DAILY_QUOTA_PER_HUMAN=      # default 10 — consulti A2A al giorno per humanId (su TUTTI i suoi agenti)
+A2A_DAILY_QUOTA_PER_HUMAN=      # default 20 — consulti A2A al giorno per humanId (su TUTTI i suoi agenti)
 REQUIRE_HUMAN_BACKED_A2A=       # 1 per rifiutare consulti da agenti senza umano dietro (demo: 1)
 ```
 
@@ -309,12 +310,12 @@ AgentBook, nonce replay ledger, the AgentKit signed-header protocol
 (`createAgentkitClient`/`createAgentkitHooks`) — see Verified facts for why it cannot
 apply to our coaches.
 
-## Open decisions for review (defaults proposed)
+## Decisions (resolved at review, 2026-07-25)
 
-1. Quota default `10/day` per human — arbitrary, pick at review.
-2. humanId shown truncated in UI (full value nowhere user-facing) — ok?
-3. `REQUIRE_HUMAN_BACKED_A2A` opt-in (off by default, on in prod demo) vs always-on.
-4. Sign-off on the one-write amendment (`agentkit_usage`) to the a2a stateless
-   contract (`route.ts:109`).
-5. Phase order: A then B (registration first unblocks the demo path) — or B first if
-   the rogue-agent demo matters more than self-serve registration.
+1. Quota: **20/day** per human.
+2. humanId in UI: **truncated** (tooltip on the "umano unico ✓" badge).
+3. `REQUIRE_HUMAN_BACKED_A2A`: **opt-in flag, set to 1 in prod/demo** (same
+   convention as `REQUIRE_HUMAN_BACKED_MINT`).
+4. The one-write amendment (`agentkit_usage`) to the a2a stateless contract:
+   **approved** — route doc comment updated in the same commit.
+5. Phase order: **A then B**.
