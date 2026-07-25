@@ -2,10 +2,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
-import { PERSONALITY_STYLE, type Personality } from "@0run/shared";
+import { EXPERTISE_MAX, PERSONALITY_STYLE, type Personality } from "@0run/shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useUserKey } from "@/lib/client/useUserKey";
 
 const PERSONALITIES: { id: Personality; title: string }[] = [
@@ -76,6 +77,9 @@ export default function MintPage() {
   const router = useRouter();
 
   const [name, setName] = useState("");
+  // What this coach knows, in the athlete's own words. Public on purpose (see
+  // the label below): it is what makes one coach worth asking over another.
+  const [expertise, setExpertise] = useState("");
   const [selected, setSelected] = useState<Personality | null>(null);
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +124,12 @@ export default function MintPage() {
         res = await fetchWithTimeout("/api/coach/mint", {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ name: name.trim(), personality: selected, userKeyHex: keyHex }),
+          body: JSON.stringify({
+            name: name.trim(),
+            personality: selected,
+            userKeyHex: keyHex,
+            ...(expertise.trim() ? { expertise: expertise.trim() } : {}),
+          }),
         }, MINT_CLIENT_TIMEOUT_MS);
       } catch (e: any) {
         if (e?.name === "AbortError") {
@@ -179,6 +188,25 @@ export default function MintPage() {
               maxLength={40}
               onChange={(e) => setName(e.target.value)}
             />
+          </div>
+
+          <div className="max-w-md">
+            <label htmlFor="coach-expertise" className="mb-3 block font-sans text-xs uppercase tracking-[0.3em] text-ocean">
+              What does it know? <span className="text-navy/50">optional</span>
+            </label>
+            <Textarea
+              id="coach-expertise"
+              rows={3}
+              maxLength={EXPERTISE_MAX}
+              placeholder="trail ultras, heat adaptation, low heart-rate base building…"
+              value={expertise}
+              onChange={(e) => setExpertise(e.target.value)}
+            />
+            <p className="mt-3 font-sans text-sm leading-relaxed text-ocean">
+              Shapes how it coaches you — and it is <em className="font-serif italic">public</em>: it appears on your
+              coach&apos;s page, in its ENS record, and is what other runners read when they decide whose coach to ask.
+              Nothing about your runs is ever published.
+            </p>
           </div>
 
           <div>

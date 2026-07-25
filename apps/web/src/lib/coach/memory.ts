@@ -62,6 +62,9 @@ export function buildProfile(memory: CoachMemory): CoachProfile {
     totals: { runs: runs.length, km: Math.round(runs.reduce((a, r) => a + r.distanceKm, 0) * 100) / 100 },
     paceTrend: runs.slice(-10).map((r) => r.avgPaceSecKm),
     styleNotes: PERSONALITY_STYLE[memory.coach.personality],
+    // Carried through every rebuild: the brief is part of who the coach is, not
+    // a one-off at creation.
+    ...(memory.coach.expertise ? { expertise: memory.coach.expertise } : {}),
   });
 }
 

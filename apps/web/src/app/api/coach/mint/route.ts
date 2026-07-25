@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { z } from "zod";
-import { PERSONALITY_STYLE, PersonalitySchema, initialMemory, explorerTx, type Personality } from "@0run/shared";
+import { EXPERTISE_MAX, PERSONALITY_STYLE, PersonalitySchema, initialMemory, explorerTx, type Personality } from "@0run/shared";
 import { requireUser } from "@/lib/auth";
 import { encryptJson } from "@/lib/crypto/aes";
 import { serviceKey } from "@/lib/crypto/keys";
@@ -23,6 +23,11 @@ const Body = z.object({
   // shorter-than-expected (or wrong) AES key instead of failing loudly.
   // Require exactly 32 bytes of hex up front.
   userKeyHex: z.string().regex(/^[0-9a-f]{64}$/i, "userKeyHex deve essere 64 caratteri esadecimali (32 byte)"),
+  // What this coach knows, in the athlete's own words. Optional, PUBLIC (it
+  // goes into the profile layer a stranger reads and into the ENS description),
+  // and treated as data rather than instructions everywhere it is used — see
+  // lib/coach/prompts.ts.
+  expertise: z.string().max(EXPERTISE_MAX).optional(),
 });
 
 // Chain calls (mint + registry update) are seconds in practice — see
@@ -62,8 +67,17 @@ function uniqueViolation(e: unknown): string | null {
 }
 
 /** One line about the coach, for the ENSIP-5 `description` record. */
-function coachDescription(name: string, personality: Personality): string {
-  return `${name} — ${PERSONALITY_STYLE[personality]} An AI running coach owned by one athlete on 0run; its memory is encrypted and only that athlete can read it.`;
+function coachDescription(name: string, personality: Personality, expertise?: string): string {
+  const brief = expertise?.trim();
+  return [
+    `${name} — ${PERSONALITY_STYLE[personality]}`,
+    // The athlete's own words about what this coach knows: this is what makes
+    // the public directory useful — you can tell which coach is worth asking.
+    brief ? `Knows: ${brief}` : "",
+    "An AI running coach owned by one athlete on 0run; its memory is encrypted and only that athlete can read it.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /**
@@ -142,7 +156,7 @@ export async function POST(req: Request) {
   }
   const parsed = Body.safeParse(rawBody);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-  const { name, personality, userKeyHex } = parsed.data;
+  const { name, personality, userKeyHex, expertise } = parsed.data;
   const userKey = Buffer.from(userKeyHex, "hex");
 
   // Resolve everything that can fail on configuration BEFORE reserving. serviceKey()
@@ -294,7 +308,7 @@ export async function POST(req: Request) {
     let profPrep: Awaited<ReturnType<typeof prepareEncryptedUpload>>;
     let profileCipher = "";
     try {
-      const { memory, profile } = initialMemory(name, personality);
+      const { memory, profile } = initialMemory(name, personality, expertise);
       memCt = encryptJson(memory, userKey);
       const profCt = encryptJson(profile, svcKey);
       profileCipher = profCt;
@@ -368,7 +382,7 @@ export async function POST(req: Request) {
         endpoint: `${SITE_URL}/coach/${tokenId}`,
         avatar: `${SITE_URL}/api/coach/${tokenId}/avatar`,
         url: `${SITE_URL}/coach/${tokenId}`,
-        description: coachDescription(name, personality),
+        description: coachDescription(name, personality, expertise),
         personality,
       })
         .then(async (result) => {
@@ -413,7 +427,7 @@ export async function POST(req: Request) {
       // Writing tokenId here is also what takes the row out of reach of the stale
       // reclaim above, so it must be part of this single update, never a later one.
       await db.update(coaches)
-        .set({ tokenId, mintTx: txHash, memoryRoot: memPrep.rootHash, profileRoot: profPrep.rootHash, memoryCipher: memCt, profileCipher })
+        .set({ tokenId, mintTx: txHash, memoryRoot: memPrep.rootHash, profileRoot: profPrep.rootHash, memoryCipher: memCt, profileCipher, expertise: expertise?.trim() || null })
         .where(eq(coaches.userId, user.userId));
       startBackgroundUpload();
       startBackgroundRegistration(tokenId);

@@ -247,6 +247,37 @@ describe("POST /api/coach/mint", () => {
     expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
   });
 
+  it("il brief del coach finisce sulla riga e nella description ENS", async () => {
+    vi.mocked(assignSubname).mockImplementation(async () => ({ name: "kilian.0run.eth", txHash: "0xenstx" }));
+    const { POST } = await import("./route");
+    const res = await POST(
+      req({ name: "Kilian", personality: "coach", userKeyHex: "aa".repeat(32), expertise: "trail ultras, heat adaptation" }),
+    );
+    expect(res.status).toBe(200);
+    expect(dbState.coaches.get(1).expertise).toBe("trail ultras, heat adaptation");
+    // È pubblico per scelta: è ciò che fa capire a un estraneo quale coach vale
+    // la pena interrogare.
+    const records = vi.mocked(assignSubname).mock.calls[0][2] as any;
+    expect(records.description).toContain("trail ultras, heat adaptation");
+  });
+
+  it("senza brief niente 'Knows:' inventato nella description", async () => {
+    vi.mocked(assignSubname).mockImplementation(async () => ({ name: "kilian.0run.eth", txHash: "0xenstx" }));
+    const { POST } = await import("./route");
+    expect((await POST(req())).status).toBe(200);
+    const records = vi.mocked(assignSubname).mock.calls[0][2] as any;
+    expect(records.description).not.toContain("Knows:");
+  });
+
+  it("un brief oltre il limite viene rifiutato con 400, non troncato di nascosto", async () => {
+    const { POST } = await import("./route");
+    const res = await POST(
+      req({ name: "Kilian", personality: "coach", userKeyHex: "aa".repeat(32), expertise: "x".repeat(401) }),
+    );
+    expect(res.status).toBe(400);
+    expect(dbState.coaches.size).toBe(0);
+  });
+
   it("una prenotazione morta della STESSA persona da un altro account viene recuperata, non blocca per sempre", async () => {
     // Account 99 ha prenotato (placeholder vuoti) ed è morto prima di finalizzare.
     // Il reclaim per userId non guarda mai questa riga: senza il recupero per

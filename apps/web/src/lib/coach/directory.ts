@@ -28,6 +28,9 @@ export type DirectoryEntry = {
   // personality the athlete configured, and (mirroring
   // app/coach/[tokenId]/page.tsx) how many runs it has read.
   personality: string | null;
+  // What the athlete said this coach knows, at creation. The reason the
+  // directory is useful rather than a list of names.
+  expertise: string | null;
   runCount: number | null;
   // The ENS name this tokenId is identified by — normally coaches.ensName,
   // written by assignSubname() at mint time. When that column is empty the
@@ -126,6 +129,7 @@ async function buildDirectory(): Promise<DirectoryEntry[]> {
       userId: coaches.userId,
       name: coaches.name,
       personality: coaches.personality,
+      expertise: coaches.expertise,
       ensName: coaches.ensName,
       hasAvatar: sql<boolean>`${coaches.avatarImage} is not null`,
     })
@@ -170,6 +174,7 @@ async function buildDirectory(): Promise<DirectoryEntry[]> {
         tokenId,
         owner,
         personality: dbRow?.personality ?? null,
+        expertise: dbRow?.expertise ?? null,
         hasAvatar: dbRow?.hasAvatar ?? false,
         runCount,
         ensName,

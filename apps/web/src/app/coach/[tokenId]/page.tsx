@@ -35,6 +35,7 @@ async function loadCoach(tokenId: string) {
       userId: coaches.userId,
       name: coaches.name,
       personality: coaches.personality,
+      expertise: coaches.expertise,
       memoryRoot: coaches.memoryRoot,
       profileRoot: coaches.profileRoot,
       mintTx: coaches.mintTx,
@@ -105,6 +106,13 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
               <em className="font-serif italic text-orange">only</em>. It has read {runsRead}{" "}
               {runsRead === 1 ? "run" : "runs"} so far, and gets sharper with every one.
             </p>
+            {coach.expertise && (
+              <p className="mt-6 max-w-md font-sans text-lg leading-relaxed text-navy">
+                <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">Knows</span>
+                <br />
+                {coach.expertise}
+              </p>
+            )}
             <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-ocean">
               {PERSONALITY_LABEL[coach.personality] ?? coach.personality}. What it learned is locked with a key only its
               athlete holds — not even we can read it — so you will find nothing about their training on this page. What

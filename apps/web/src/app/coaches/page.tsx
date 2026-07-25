@@ -156,6 +156,10 @@ function DirectoryCard({ entry }: { entry: ResolvedEntry }) {
         coach #{entry.tokenId}
       </p>
 
+      {entry.expertise && (
+        <p className="mt-4 font-sans text-base leading-relaxed text-navy">{entry.expertise}</p>
+      )}
+
       <p className="mt-4 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
         {personalityLabel} · {runsLabel}
       </p>
