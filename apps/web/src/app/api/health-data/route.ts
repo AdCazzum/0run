@@ -7,6 +7,7 @@ import { coaches } from "@/db/schema";
 import { decryptJson } from "@/lib/crypto/aes";
 import { downloadDecrypted, prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { parseMemory, persistMemory, setHealthSnapshot } from "@/lib/coach/memory";
+import { toBytes32, updateRegistry } from "@/lib/zerog/contracts";
 import { parseHealthExport, HealthParseError } from "@/lib/health/parse";
 
 // The real export used for the demo is 11 MB (docs/superpowers/specs/
@@ -180,6 +181,22 @@ export async function POST(req: Request) {
       console.error("health-data: raw export upload prepare failed", e);
     }
 
+    // The memory changed, so the on-chain anchor must change with it: the whole
+    // claim is that the hash of the coach's memory is verifiable on-chain, and an
+    // anchor left pointing at the pre-health memory would quietly make that claim
+    // false until the next run happened to update it. Not fatal if it fails — the
+    // memory is already persisted and the next run re-anchors — but never silent.
+    let registryTx: string | null = null;
+    try {
+      registryTx = await updateRegistry(
+        coach.tokenId,
+        toBytes32(receipts.memory.rootHash),
+        toBytes32(receipts.profile.rootHash),
+      );
+    } catch (e) {
+      console.error("health-data: on-chain memory anchor failed, will re-anchor on the next run", e);
+    }
+
     await db.update(coaches).set({
       memoryRoot: receipts.memory.rootHash,
       profileRoot: receipts.profile.rootHash,
@@ -195,6 +212,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       coverage: { windowDays: coverage.days, from: coverage.from || null, to: coverage.to || null, metrics: coverage.metrics },
+      registryTx,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: e.status ?? 500 });
