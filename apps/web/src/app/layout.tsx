@@ -1,16 +1,24 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Playfair_Display, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { PageChrome } from "@/components/ui/page-chrome";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// NOTE: brief asks for weights 400 + 300 ("Light"), but Google Fonts does
+// not ship a 300 weight for Playfair Display (static or variable axis
+// min is 400) — next/font/google's generated types reject "300" here.
+// Using 400 only; see task-12-report.md concerns.
+const playfairDisplay = Playfair_Display({
+  variable: "--font-serif",
   subsets: ["latin"],
+  weight: ["400"],
+  style: ["normal", "italic"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const inter = Inter({
+  variable: "--font-sans",
   subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
@@ -26,9 +34,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${playfairDisplay.variable} ${inter.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col"><Providers>{children}</Providers></body>
+      <body className="min-h-full flex flex-col font-sans bg-cream text-navy">
+        <PageChrome />
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
