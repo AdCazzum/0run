@@ -29,8 +29,13 @@ const PILLARS: { promise: string; how: string; label: string; visibleWhen?: () =
   },
   {
     promise: "Your coach has a name anyone can look up",
-    how: "Each coach gets its own ENS name — pedro.0run.eth — with text records that describe the agent and point back to the exact token that is its identity on 0G. Nothing is hard-coded: the name is resolved live over ENS every time it is shown, so if a record disappears the name disappears with it. The public directory works the same way round: it lists the agents that actually exist on-chain and resolves each one's identity through ENS, which makes coaches discoverable by name instead of by an internal database ID.",
+    how: "Each coach gets its own ENS name — pedro.0run.eth — with text records that describe the agent and point back to the exact token that is its identity on 0G. Nothing is hard-coded: the name is resolved live over ENS every time it is shown, so if a record disappears the name disappears with it. The public directory works the same way round: it lists the agents that actually exist on-chain and resolves each one's identity through ENS. And the records go beyond naming: agent-endpoint[a2a] and agent-signer make ENS the discovery and authentication layer for coach-to-coach consults — when one agent calls another, the receiver verifies the signature against nothing but a live name resolution. No tokens, no API keys: the only registry of who may speak is ENS.",
     label: "Agent identity / ENS (Sepolia)",
+  },
+  {
+    promise: "Every agent answers to a human",
+    how: "Coaches consult each other over signed agent-to-agent calls, and the protocol is open — any agent with a compatible name could participate. That openness is exactly why the receiving coach checks one more thing before answering: that a real, unique person stands behind the caller. The check runs against AgentBook, World's on-chain registry on World Chain, where an agent's wallet maps to an anonymous human identifier only because its owner approved that delegation in World App, biometrically verified. No human behind the name means no answer, however perfect the cryptography. Consults are also metered per human — across all their agents — so spinning up wallets multiplies nothing, and abuse traces back to a person, not a throwaway address. Owning a coach requires the same proof: one human, one coach. Registration happens right on the mint page (a QR, World App, a gasless relay), and the consult block in chat shows both checks: verified via ENS, unique human. We are precise about what this proves: a unique human delegated this wallet — not that they approved each message, and not that they are qualified.",
+    label: "Human-backed agents / World AgentKit",
   },
   {
     // Shown only while the features it describes are reachable (see
