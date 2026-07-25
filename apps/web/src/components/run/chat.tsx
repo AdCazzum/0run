@@ -85,9 +85,13 @@ export function Chat({ runId }: { runId?: number }) {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={`/api/coach/${turn.consult.toTokenId}/avatar`} alt="" className="h-8 w-8 rounded-full object-cover" />
                     )}
-                    <p className="font-sans text-sm leading-relaxed text-navy">
-                      <span className="font-semibold">{turn.consult.coachName}:</span> {turn.consult.reply}
-                    </p>
+                    <div className="min-w-0 flex-1 font-sans text-sm leading-relaxed text-navy">
+                      <p className="mb-1 font-semibold">{turn.consult.coachName}:</p>
+                      {/* The colleague's reply is agent output, exactly like the
+                          coach's own bubbles — it arrives as markdown and gets the
+                          same renderer (only user-typed text stays plain). */}
+                      <CoachMarkdown>{turn.consult.reply}</CoachMarkdown>
+                    </div>
                   </div>
                 </div>
               )}
