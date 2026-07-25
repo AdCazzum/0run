@@ -47,9 +47,9 @@ export function EnsBadge({ name }: { name: string | null | undefined }) {
       href={`https://sepolia.app.ens.domains/${name}`}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-3 py-1 font-sans text-[10px] uppercase tracking-[0.3em] text-ocean underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
+      className="inline-flex items-center gap-3 py-1 font-sans text-[10px] uppercase tracking-[0.3em] text-orange underline-offset-4 transition-colors duration-500 hover:text-navy hover:underline"
     >
-      <span aria-hidden className="h-px w-8 bg-navy/20" />
+      <span aria-hidden className="h-px w-8 bg-orange/40" />
       {name} · ens · sepolia ↗
     </a>
   );

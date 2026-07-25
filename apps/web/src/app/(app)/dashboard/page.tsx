@@ -82,7 +82,10 @@ export default function DashboardPage() {
       <header className="flex items-end justify-between gap-4 border-b border-navy/15 pb-6 md:pb-8">
         <div>
           <Overline>Your coach</Overline>
-          <h1 className="mt-3 font-serif text-2xl leading-tight text-navy md:text-4xl">{feed.coach.name}</h1>
+          {/* The agent's name carries the accent: it is the one thing on this page
+              that is unmistakably *yours*, and at display size the orange reads as
+              brand rather than as a warning. */}
+          <h1 className="mt-3 font-serif text-2xl leading-tight text-orange md:text-4xl">{feed.coach.name}</h1>
           <p className="mt-2 font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
             {feed.coach.personality.replace("_", " ")} · agent #{feed.coach.tokenId} ·{" "}
             {feed.runs.length === 0
