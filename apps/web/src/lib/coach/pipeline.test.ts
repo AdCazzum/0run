@@ -21,6 +21,7 @@ vi.mock("@/db", () => ({
           if (v.status) stepLog.status = v.status;
           if ("effortScore" in v || "scoreNote" in v || "scoreVerified" in v) stepLog.scoreWrite = v;
           if ("memoryCipher" in v || "memoryRoot" in v) coachUpdates.push(v);
+          if ("feelingsCipher" in v) stepLog.feelingsCipherWrite = v.feelingsCipher;
         },
       }),
     }),
@@ -168,5 +169,34 @@ describe("processRun", () => {
     const { processRun } = await import("./pipeline");
     await expect(processRun(1, 1, "non gpx", Buffer.alloc(32))).resolves.toBeUndefined();
     expect(stepLog.status).toBe("error");
+  });
+
+  it("con feelings: la ciphertext viene scritta sulla riga e il testo in chiaro finisce nella memoria appesa", async () => {
+    const { processRun } = await import("./pipeline");
+
+    await processRun(1, 1, gpx, Buffer.alloc(32), "legs felt heavy today");
+
+    expect(stepLog.status).toBe("done");
+    expect(typeof stepLog.feelingsCipherWrite).toBe("string");
+    expect(stepLog.feelingsCipherWrite.length).toBeGreaterThan(0);
+    // The row must hold ciphertext ONLY — the plaintext must never appear verbatim on it.
+    expect(stepLog.feelingsCipherWrite).not.toContain("legs felt heavy today");
+
+    const [updatedMemory] = persistMemoryMock.mock.calls[0];
+    const appended = updatedMemory.privateLayer.runs.at(-1)!;
+    expect(appended.feelings).toBe("legs felt heavy today");
+  });
+
+  it("senza feelings: comportamento identico a prima (nessuna ciphertext, feelings null in memoria)", async () => {
+    const { processRun } = await import("./pipeline");
+
+    await processRun(1, 1, gpx, Buffer.alloc(32));
+
+    expect(stepLog.status).toBe("done");
+    expect(stepLog.feelingsCipherWrite).toBeNull();
+
+    const [updatedMemory] = persistMemoryMock.mock.calls[0];
+    const appended = updatedMemory.privateLayer.runs.at(-1)!;
+    expect(appended.feelings).toBeNull();
   });
 });

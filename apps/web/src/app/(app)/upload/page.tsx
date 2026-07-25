@@ -3,7 +3,10 @@ import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useUserKey } from "@/lib/client/useUserKey";
+
+const MAX_FEELINGS_CHARS = 1000;
 
 export default function UploadPage() {
   const { ready, authenticated, getAccessToken } = usePrivy();
@@ -13,6 +16,7 @@ export default function UploadPage() {
 
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [feelings, setFeelings] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,6 +43,8 @@ export default function UploadPage() {
       const form = new FormData();
       form.set("gpx", file);
       form.set("userKeyHex", keyHex);
+      const trimmedFeelings = feelings.trim();
+      if (trimmedFeelings) form.set("feelings", trimmedFeelings);
 
       const res = await fetch("/api/runs", {
         method: "POST",
@@ -115,6 +121,26 @@ export default function UploadPage() {
         </label>
 
         {error && <p className="mt-4 font-sans text-sm text-orange">{error}</p>}
+
+        <div className="mt-8">
+          <label htmlFor="feelings-input" className="mb-3 flex items-center gap-4">
+            <span aria-hidden className="h-px w-8 bg-navy" />
+            <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">
+              How did it feel? — optional
+            </span>
+          </label>
+          <Textarea
+            id="feelings-input"
+            rows={4}
+            value={feelings}
+            onChange={(e) => setFeelings(e.target.value)}
+            maxLength={MAX_FEELINGS_CHARS}
+            placeholder="tired legs, felt strong on the climb, knee was a little sore…"
+          />
+          <p className="mt-2 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
+            your coach will read this — {feelings.length}/{MAX_FEELINGS_CHARS}
+          </p>
+        </div>
 
         <div className="mt-8">
           {ready && !authenticated ? (

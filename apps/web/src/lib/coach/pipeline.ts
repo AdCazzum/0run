@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { coaches, runs, type RunStep, type StepState } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { parseGpx } from "../gpx/parse";
-import { decryptJson } from "../crypto/aes";
+import { decryptJson, encryptJson } from "../crypto/aes";
 import { downloadDecrypted, uploadEncrypted } from "../zerog/storage";
 import { toBytes32, updateRegistry } from "../zerog/contracts";
 import { completeJson } from "../inference";
@@ -22,7 +22,14 @@ export const initialSteps = (): Record<RunStep, StepState> =>
  * failure mode ends in `status: "error"` on the row with a human-readable
  * detail on the step that failed.
  */
-export async function processRun(runId: number, userId: number, gpxXml: string, userKey: Buffer): Promise<void> {
+export async function processRun(
+  runId: number, userId: number, gpxXml: string, userKey: Buffer,
+  // Free-text "how did it feel", already trimmed/length-checked by the
+  // upload route (empty → null there, so this is never an empty string
+  // here). Optional/defaulted so every existing call site (and every run
+  // that doesn't submit feelings) behaves exactly as before this feature.
+  feelings: string | null = null,
+): Promise<void> {
   const steps = initialSteps();
   const mark = async (step: RunStep, state: StepState, extra: Partial<typeof runs.$inferInsert> = {}) => {
     steps[step] = state;
@@ -45,7 +52,12 @@ export async function processRun(runId: number, userId: number, gpxXml: string, 
     currentStep = "encrypt";
     const { stats, polyline } = parseGpx(gpxXml);
     const gpxContentHash = ethers.keccak256(ethers.toUtf8Bytes(gpxXml));
-    await mark("encrypt", { status: "done" }, { stats, polyline });
+    // Same AES-256-GCM envelope format as coaches.memoryCipher, keyed by the
+    // athlete's own userKey — Postgres never sees the plaintext feelings.
+    // Computed here (not gated on later steps succeeding) so it survives on
+    // the row the same way stats/polyline do even if a later step fails.
+    const feelingsCipher = feelings != null ? encryptJson(feelings, userKey) : null;
+    await mark("encrypt", { status: "done" }, { stats, polyline, feelingsCipher });
 
     // 2. encrypted GPX to storage
     currentStep = "store_gpx";
@@ -92,6 +104,7 @@ export async function processRun(runId: number, userId: number, gpxXml: string, 
     // manifest-write time. Documented, accepted gap — not backfilled here.
     const updated = appendRun(memory, {
       ...stats, reportHeadline: "", gpxRoot: gpxReceipt.rootHash, gpxContentHash, report: null,
+      feelings,
     });
     const receipts = await persistMemory(updated, userKey);
     if (!receipts.memory.ok || !receipts.profile.ok) return fail("update_memory", "persist fallita");
@@ -137,7 +150,7 @@ export async function processRun(runId: number, userId: number, gpxXml: string, 
     const { value: report, meta } = await completeJson(
       ReportSchema,
       buildReportMessages(
-        profile, memory.privateLayer.runs, stats,
+        profile, memory.privateLayer.runs, stats, feelings,
         scoreOutcome.ok ? { score: scoreOutcome.score, verified: scoreOutcome.verified } : null,
       ),
     );

@@ -62,6 +62,19 @@ export const runs = pgTable("runs", {
   gpxRoot: text("gpx_root"),
   registryTx: text("registry_tx"),
   report: jsonb("report").$type<{ headline: string; analysis: string; comparison: string; advice: string[] }>(),
+  // Ciphertext ONLY (encryptJson(feelings, userKey) — same AES-256-GCM
+  // envelope format as coaches.memoryCipher), for the free-text "how did it
+  // feel" note captured at upload. Deliberately narrower than the rest of
+  // this table: `stats` and `report` above are plaintext JSON in this index
+  // today, but free text is more sensitive than pace/elevation (it can
+  // carry health or mood information), so the encrypted CoachMemory
+  // (privateLayer.runs[].feelings, see packages/shared/src/types.ts) is the
+  // source of truth and this column exists only so the run detail page can
+  // decrypt-on-read without a 0G Storage round trip. This is NOT a claim
+  // that runs.stats/runs.report are safe as-is — moving them behind
+  // encryption too is a known, unaddressed follow-up. Null when no feelings
+  // were submitted for this run.
+  feelingsCipher: text("feelings_cipher"),
   verifiedTee: text("verified_tee"), // "true" | "false" | "unavailable"
   model: text("model"),
   // Attested effort score (1-5), produced on the TEE-verified 0G Compute

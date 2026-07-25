@@ -7,6 +7,7 @@ import { Chat } from "@/components/run/chat";
 import { PipelineSteps } from "@/components/run/pipeline-steps";
 import { ReportView } from "@/components/run/report-view";
 import type { RunRow } from "@/components/run/types";
+import { useUserKey } from "@/lib/client/useUserKey";
 
 // Leaflet touches window at import time, so the map must never be part of the
 // server render.
@@ -15,8 +16,10 @@ const RunMap = dynamic(() => import("@/components/run/run-map").then((m) => m.Ru
 export default function RunPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { ready, authenticated } = usePrivy();
+  const { getKeyHex } = useUserKey();
   const [run, setRun] = useState<RunRow | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [feelings, setFeelings] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -43,6 +46,32 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
     const t = setInterval(() => void load(), 2500);
     return () => clearInterval(t);
   }, [run?.status, load]);
+
+  // Decrypt-on-read: Postgres only ever holds runs.feelingsCipher
+  // (ciphertext), so the plaintext "how did it feel" note is fetched
+  // separately, once per run id (not on every processing-status poll above).
+  // Any failure here (no cipher stored, wrong/missing key, network error)
+  // just leaves feelings unset — never a placeholder implying data exists.
+  useEffect(() => {
+    if (!run?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [token, userKeyHex] = await Promise.all([getAccessToken(), getKeyHex()]);
+        const res = await fetch(`/api/runs/${run.id}/feelings`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ userKeyHex }),
+        });
+        if (!res.ok) return;
+        const body = await res.json();
+        if (!cancelled) setFeelings(body.feelings ?? null);
+      } catch {
+        if (!cancelled) setFeelings(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [run?.id, getKeyHex]);
 
   if (!ready) return null;
   if (error) return <Label>{error}</Label>;
@@ -85,6 +114,15 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
         </div>
 
         <div className="md:col-span-6 md:col-start-7">
+          {feelings && (
+            <div className="mb-8">
+              <div className="mb-3 flex items-center gap-3">
+                <span aria-hidden className="h-px w-8 bg-navy" />
+                <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">How it felt</span>
+              </div>
+              <p className="border-l border-orange pl-6 font-serif text-xl italic text-navy">“{feelings}”</p>
+            </div>
+          )}
           {run.report ? (
             <ReportView
               report={run.report}

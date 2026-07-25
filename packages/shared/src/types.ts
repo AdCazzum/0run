@@ -44,6 +44,16 @@ export const RunSummarySchema = RunStatsSchema.extend({
   gpxRoot: z.string(),
   gpxContentHash: z.string(),
   report: RunReportSchema.nullable(),
+  // Free-text "how did it feel" captured at GPX upload (apps/web upload
+  // page). Nullable (not optional) because "the athlete didn't write
+  // anything" is a real state the coach needs to represent, distinct from
+  // "field not sent" — the upload route already collapses empty/whitespace
+  // input to null before this ever reaches the pipeline. Capped at 1000
+  // chars there too; not re-validated here (this schema only describes
+  // shape, not upload-time policy). Defaults to null so RunSummary entries
+  // written before this field existed still parse without a migration
+  // (same convention as reportHeadline's default above).
+  feelings: z.string().max(1000).nullable().default(null),
 });
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 

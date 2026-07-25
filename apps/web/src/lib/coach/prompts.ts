@@ -15,6 +15,13 @@ export function systemPrompt(profile: CoachProfile): string {
     `You are ${profile.name}, an AI running coach. Personality: ${profile.styleNotes}`,
     `Athlete totals: ${profile.totals.runs} runs, ${profile.totals.km} km. Recent pace trend (sec/km, latest last): ${profile.paceTrend.join(", ") || "none"}.`,
     `Stay in character. Be specific with numbers. Answer in the user's language (Italian if unsure).`,
+    // Run summaries (current and recent) may carry a free-text "feelings"
+    // field the athlete wrote themselves — it can mention pain, illness, or
+    // how they slept, which pace/elevation alone can never tell you. Cite it
+    // when relevant, but this coach is not a doctor: never diagnose or
+    // prescribe treatment. See docs/superpowers/specs/2026-07-25-health-data-spec.md
+    // for the same guardrail applied to health data.
+    `If the athlete's own words (the "feelings" field on a run) mention pain, injury, illness, or feeling unwell, acknowledge it and suggest caution (e.g. easing off, resting, seeing a professional if it persists) — never give medical advice or a diagnosis.`,
   ].join("\n");
 }
 
@@ -27,8 +34,17 @@ export function systemPrompt(profile: CoachProfile): string {
  */
 export function buildReportMessages(
   profile: CoachProfile, recentRuns: RunSummary[], current: RunStats,
+  // The current run's free-text "how did it feel" note, decoupled from
+  // `current: RunStats` because RunStats (parsed straight from the GPX) has
+  // no concept of it — it's captured separately at upload. Optional/nullable
+  // so a run without feelings produces byte-for-byte the same prompt as
+  // before this feature existed (same convention as `score` below).
+  currentFeelings?: string | null,
   score?: { score: number; verified: boolean | null } | null,
 ): ChatMsg[] {
+  const feelingsLine = currentFeelings
+    ? [`How the athlete described how this run felt, in their own words: "${currentFeelings}"`]
+    : [];
   const scoreLine = score
     ? [`Attested effort score for today's run (independently computed, 1-5 relative to this athlete's own history, ${
         score.verified === true ? "cryptographically TEE-verified" : score.verified === false ? "verification failed" : "TEE attestation unavailable"
@@ -41,6 +57,9 @@ export function buildReportMessages(
       content: [
         `Analyze today's run and compare it EXPLICITLY with the previous runs (cite concrete deltas, e.g. sec/km).`,
         `Today's run:\n${JSON.stringify(current, null, 1)}`,
+        ...feelingsLine,
+        // recentRuns items include their own `feelings` field (RunSummary),
+        // so history already carries how past runs felt without extra code.
         `Summaries of previous runs (latest last):\n${JSON.stringify(recentRuns.slice(-5), null, 1)}`,
         ...scoreLine,
         `Respond ONLY with JSON: {"headline": string, "analysis": string, "comparison": string, "advice": string[]} (max 4 advice).`,
@@ -90,6 +109,9 @@ export function buildScoreMessages(profile: CoachProfile, recentRuns: RunSummary
 }
 
 export function buildChatMessages(profile: CoachProfile, recentRuns: RunSummary[], history: ChatMsg[]): ChatMsg[] {
+  // recentRuns items are full RunSummary objects, so their `feelings` field
+  // (if any) rides along in this JSON automatically — no separate plumbing
+  // needed here for "how recent runs felt" to reach the model.
   return [
     { role: "system", content: `${systemPrompt(profile)}\nRecent runs:\n${JSON.stringify(recentRuns.slice(-5))}` },
     ...history.slice(-12),
