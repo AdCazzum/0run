@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { getAccessToken, usePrivy } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CoachMarkdown } from "@/components/coach/coach-markdown";
+import { usePrivyReady } from "@/app/providers";
 
 type AskReply = { text: string; disclaimer: string };
 
@@ -14,8 +16,36 @@ type AskReply = { text: string; disclaimer: string };
  * athlete's history. See api/coach/[tokenId]/ask/route.ts for the privacy
  * contract this UI is a thin wrapper around (never the owner's private
  * layer, never a write to the owner's memory).
+ *
+ * This sits on a PUBLIC page, so the Privy hooks live one component deeper:
+ * calling them where the provider is not mounted is what once turned the
+ * landing page into a 500 (see app/providers.tsx), and hooks cannot be called
+ * behind an `if`.
  */
-export function AskThisCoach({ tokenId, coachLabel }: { tokenId: string; coachLabel: string }) {
+export function AskThisCoach(props: { tokenId: string; coachLabel: string }) {
+  return usePrivyReady() ? <AskThisCoachWithPrivy {...props} /> : <SignInElsewhere />;
+}
+
+/** Auth is not configured in this build — say what is true, offer the way in. */
+function SignInElsewhere() {
+  return (
+    <section className="mt-16 border-t border-navy pt-10">
+      <div className="flex items-center gap-4">
+        <span aria-hidden className="h-px w-8 bg-navy md:w-12" />
+        <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Ask this coach</span>
+      </div>
+      <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-navy">
+        Asking a coach needs an account.{" "}
+        <Link href="/dashboard" className="text-navy underline-offset-4 hover:text-orange hover:underline">
+          Start here
+        </Link>
+        .
+      </p>
+    </section>
+  );
+}
+
+function AskThisCoachWithPrivy({ tokenId, coachLabel }: { tokenId: string; coachLabel: string }) {
   const { ready, authenticated } = usePrivy();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
