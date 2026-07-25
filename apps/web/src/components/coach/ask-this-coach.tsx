@@ -60,14 +60,14 @@ export function AskThisCoach({ tokenId, coachLabel }: { tokenId: string; coachLa
 
       {!authenticated ? (
         <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-navy">
-          Sign in to ask {coachLabel} about your own latest run — its methodology, applied to your data,
-          never this agent&apos;s own athlete&apos;s.
+          Sign in to get a second opinion from {coachLabel} on your own last run. It reads your run,
+          in its own style — it never sees the athlete it belongs to.
         </p>
       ) : (
         <>
           <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-navy">
-            {coachLabel}&apos;s methodology, applied to <em className="font-serif italic text-orange">your</em> latest
-            run — not this agent&apos;s own athlete&apos;s data.
+            A second opinion on <em className="font-serif italic text-orange">your</em> last run, in{" "}
+            {coachLabel}&apos;s own style. It never sees the athlete it belongs to.
           </p>
 
           <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-end">

@@ -24,3 +24,25 @@ export function decryptJson<T>(payload: string, key: Buffer, schema: ZodType<T, 
   const plain = Buffer.concat([d.update(ct), d.final()]).toString("utf8"); // GCM: chiave sbagliata → throw qui
   return schema.parse(JSON.parse(plain));
 }
+
+/**
+ * Whether `payload` is an envelope this key can actually open.
+ *
+ * What comes back from 0G Storage is the base64 envelope encryptJson produced
+ * — NOT JSON. Callers used to validate a download with `JSON.parse`, which is
+ * false for every well-formed envelope, so "the download worked" was reported
+ * as "wrong key or corrupt data". Decrypting is both the correct check and the
+ * only one that proves the key matches.
+ */
+export function canDecrypt(payload: string, key: Buffer): boolean {
+  try {
+    const buf = Buffer.from(payload, "base64");
+    if (buf.length <= 28) return false;
+    const d = createDecipheriv("aes-256-gcm", key, buf.subarray(0, 12));
+    d.setAuthTag(buf.subarray(12, 28));
+    Buffer.concat([d.update(buf.subarray(28)), d.final()]);
+    return true;
+  } catch {
+    return false;
+  }
+}

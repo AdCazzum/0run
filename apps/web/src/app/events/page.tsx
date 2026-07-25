@@ -47,7 +47,7 @@ export default async function EventsPage() {
 
         <div className="flex items-center gap-4">
           <span aria-hidden className="h-px w-12 bg-navy" />
-          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">The crew</span>
+          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Run together</span>
         </div>
 
         <div className="mt-8 grid grid-cols-12 gap-x-8 gap-y-12">
@@ -56,8 +56,13 @@ export default async function EventsPage() {
               Every <em className="font-serif italic text-orange">run</em>, together.
             </h1>
             <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
-              Anyone can start an event here. A claim only proves that one unique, World-ID-verified
-              human showed up to claim it — it is not proof of attendance, and we say so on purpose.
+              A morning race, a Thursday group run, a challenge between friends. Anyone can start
+              one, and anyone can join.
+            </p>
+            <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-ocean">
+              To put your name on an event you prove you are a real person, once, with World ID —
+              so the list is people, not accounts. It says you claimed the event, not that you ran
+              it: we would rather tell you that than pretend the badge means more than it does.
             </p>
             {/* The call to action sits under the copy it belongs to, like the one
                 on the home page. Off in its own right-hand column it read as
@@ -90,7 +95,7 @@ export default async function EventsPage() {
                       {e.name}
                     </h2>
                     <p className="mt-6 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
-                      {e.claimCount} {e.claimCount === 1 ? "claim" : "claims"} · one unique person each
+                      {e.claimCount} {e.claimCount === 1 ? "person" : "people"} · each one verified, once
                     </p>
                   </Card>
                 </Link>

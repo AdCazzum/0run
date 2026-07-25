@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { coaches, runs, type RunStep, type StepState } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { parseGpx } from "../gpx/parse";
-import { decryptJson, encryptJson } from "../crypto/aes";
+import { decryptJson, encryptJson, canDecrypt } from "../crypto/aes";
 import { downloadDecrypted, uploadEncrypted } from "../zerog/storage";
 import { toBytes32, updateRegistry } from "../zerog/contracts";
 import { completeJson } from "../inference";
@@ -89,9 +89,7 @@ export async function processRun(
     if (coach.memoryCipher) {
       memoryCipherText = coach.memoryCipher;
     } else {
-      const memDl = await downloadDecrypted(coach.memoryRoot, userKey, (buf) => {
-        try { JSON.parse(buf.toString("utf8")); return true; } catch { return false; }
-      });
+      const memDl = await downloadDecrypted(coach.memoryRoot, userKey, (b) => canDecrypt(b.toString("utf8"), userKey));
       if (!memDl.ok) return fail("update_memory", memDl.error);
       memoryCipherText = memDl.data.toString("utf8");
     }

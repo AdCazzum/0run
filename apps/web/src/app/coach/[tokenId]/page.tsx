@@ -56,8 +56,8 @@ export async function generateMetadata({ params }: { params: Promise<{ tokenId: 
   const data = await loadCoach(tokenId);
   if (!data) return { title: "Coach not found — 0run" };
   return {
-    title: `${data.coach.name} — an AI running coach on 0G`,
-    description: `${data.coach.name} is an intelligent NFT on 0G Chain. It has read ${data.runsRead} run(s); its memory is encrypted and anchored on-chain.`,
+    title: `${data.coach.name} — an AI running coach`,
+    description: `${data.coach.name} is an AI running coach that belongs to one athlete. It has read ${data.runsRead} run(s); what it learned is encrypted, and its memory is anchored on 0G Chain.`,
   };
 }
 
@@ -87,7 +87,7 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
 
         <div className="flex items-center gap-4">
           <span aria-hidden className="h-px w-12 bg-navy" />
-          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Agentic identity</span>
+          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">A coach with a name</span>
         </div>
 
         <div className="mt-8 grid grid-cols-12 gap-x-8 gap-y-12">
@@ -101,14 +101,15 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
             />
             <h1 className="font-serif text-6xl leading-[0.9] text-navy md:text-8xl">{coach.name}</h1>
             <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
-              An AI running coach that exists as an <em className="font-serif italic text-orange">intelligent NFT</em> on
-              0G Chain. Its memory is encrypted with a key only its athlete controls, and the hash of that memory is
-              anchored on-chain every time it reads a new run.
+              An AI running coach that belongs to one athlete — and to them{" "}
+              <em className="font-serif italic text-orange">only</em>. It has read {runsRead}{" "}
+              {runsRead === 1 ? "run" : "runs"} so far, and gets sharper with every one.
             </p>
             <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-ocean">
-              {PERSONALITY_LABEL[coach.personality] ?? coach.personality} · has read {runsRead}{" "}
-              {runsRead === 1 ? "run" : "runs"}. Nothing about those runs is published here: this page shows only what is
-              already on-chain.
+              {PERSONALITY_LABEL[coach.personality] ?? coach.personality}. What it learned is locked with a key only its
+              athlete holds — not even we can read it — so you will find nothing about their training on this page. What
+              you can check, below, is that this coach is real: it exists as an intelligent NFT on 0G Chain, and every
+              time it reads a run, a fingerprint of its memory is written there.
             </p>
           </div>
 
@@ -116,9 +117,14 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
             <Row label="chain">
               {GALILEO.name} · {GALILEO.chainId}
             </Row>
-            <Row label="agent token">#{coach.tokenId}</Row>
+            {coach.ensName && (
+              <Row label="findable as">
+                <Ext href={`https://sepolia.app.ens.domains/${coach.ensName}`}>{coach.ensName} ↗</Ext>
+              </Row>
+            )}
+            <Row label="coach">#{coach.tokenId}</Row>
             {AGENT_NFT && (
-              <Row label="agent contract">
+              <Row label="lives in">
                 <Ext href={`${GALILEO.explorer}/address/${AGENT_NFT}`}>{short(AGENT_NFT)} ↗</Ext>
               </Row>
             )}
@@ -127,7 +133,7 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
                 <Ext href={explorerTx(coach.mintTx)}>{short(coach.mintTx)} ↗</Ext>
               </Row>
             )}
-            <Row label="memory root">
+            <Row label="memory fingerprint">
               <span className="break-all font-sans text-[10px] tracking-normal">{coach.memoryRoot || "—"}</span>
             </Row>
             {coach.hasAvatar && (
@@ -139,7 +145,7 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
                 {coach.avatarVerifiedTee === "true" ? "TEE verified" : "attestation unavailable"}
               </Row>
             )}
-            <Row label="identity registry">
+            <Row label="agent registry">
               <Ext href={`${GALILEO.explorer}/address/${ERC8004_IDENTITY_REGISTRY}`}>ERC-8004 ↗</Ext>
             </Row>
           </dl>

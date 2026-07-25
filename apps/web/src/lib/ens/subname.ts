@@ -3,7 +3,7 @@ import { sepolia } from "viem/chains";
 import { ethers } from "ethers";
 import { GALILEO } from "@0run/shared";
 
-export type AssignSubnameRecords = { tokenId: string; endpoint: string };
+export type AssignSubnameRecords = { tokenId: string; endpoint: string; avatar: string };
 type Result = { name: string; txHash: string } | { error: string };
 
 /**
@@ -115,6 +115,16 @@ export async function assignSubname(label: string, owner: string, records: Assig
       ]),
       iface.encodeFunctionData("setText", [node, "agent-endpoint[web]", records.endpoint]),
       iface.encodeFunctionData("setText", [node, "0run:inft", agentPointer]),
+      // `avatar` is the standard ENS text record every ENS client already
+      // knows how to render, so this is what makes the coach's face show up in
+      // app.ens.domains and in wallets — not just on our own pages.
+      //
+      // A URL, not the image: text records are on-chain strings and this PNG
+      // is ~120KB, which would be absurd to write and to read. The URL is
+      // stable and derived from the tokenId, so it can be written now even
+      // though the portrait is generated a moment later by another background
+      // step; until then it simply 404s, and it starts working on its own.
+      iface.encodeFunctionData("setText", [node, "avatar", records.avatar]),
     ];
 
     const tx = await resolver.multicall(calls);

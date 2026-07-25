@@ -1,14 +1,26 @@
 // @vitest-environment jsdom
-import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 const pathname = vi.hoisted(() => ({ value: "/" }));
-vi.mock("next/navigation", () => ({ usePathname: () => pathname.value }));
+const auth = vi.hoisted(() => ({ ready: true, authenticated: false, privyReady: false }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => pathname.value,
+  useRouter: () => ({ push: vi.fn() }),
+}));
+vi.mock("@privy-io/react-auth", () => ({
+  usePrivy: () => ({ ready: auth.ready, authenticated: auth.authenticated, logout: vi.fn() }),
+}));
+vi.mock("@/app/providers", () => ({ usePrivyReady: () => auth.privyReady }));
 
 import { SiteHeader } from "./site-header";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  auth.ready = true;
+  auth.authenticated = false;
+  auth.privyReady = false;
+});
 
 describe("SiteHeader", () => {
   it("offre una via di ritorno nell'app: nessuna pagina pubblica è un vicolo cieco", () => {
@@ -45,8 +57,36 @@ describe("SiteHeader", () => {
     expect(screen.getByRole("link", { name: /^coaches$/i }).getAttribute("aria-current")).toBeNull();
   });
 
-  it("non usa hook di Privy: una pagina pubblica non deve dipendere dall'auth configurata", () => {
-    const source = readFileSync("src/components/landing/site-header.tsx", "utf8");
-    expect(source).not.toMatch(/privy/i);
+  it("chi è loggato ritrova le stesse destinazioni dell'app, non un menu diverso", () => {
+    auth.privyReady = true;
+    auth.authenticated = true;
+    pathname.value = "/coaches";
+    render(<SiteHeader />);
+
+    for (const [name, href] of [
+      [/^runs$/i, "/dashboard"],
+      [/^upload$/i, "/upload"],
+      [/^coach$/i, "/coach"],
+    ] as const) {
+      expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(href);
+    }
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeTruthy();
+  });
+
+  it("senza provider Privy montato la pagina pubblica resta navigabile (niente 500)", () => {
+    auth.privyReady = false;
+    pathname.value = "/coaches";
+    render(<SiteHeader />);
+    expect(screen.getByRole("link", { name: /your runs/i }).getAttribute("href")).toBe("/dashboard");
+    expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
+  });
+
+  it("provider montato ma utente non loggato → nessuna tab dell'app", () => {
+    auth.privyReady = true;
+    auth.authenticated = false;
+    pathname.value = "/coaches";
+    render(<SiteHeader />);
+    expect(screen.queryByRole("link", { name: /^upload$/i })).toBeNull();
+    expect(screen.getByRole("link", { name: /your runs/i })).toBeTruthy();
   });
 });

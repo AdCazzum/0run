@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { desc, eq } from "drizzle-orm";
-import { CoachProfileSchema } from "@0run/shared";
+import { CoachProfileSchema, PERSONALITY_STYLE, PersonalitySchema } from "@0run/shared";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
 import { coaches, runs } from "@/db/schema";
-import { decryptJson } from "@/lib/crypto/aes";
+import { canDecrypt, decryptJson } from "@/lib/crypto/aes";
 import { serviceKey } from "@/lib/crypto/keys";
 import { downloadDecrypted } from "@/lib/zerog/storage";
 import { systemPrompt } from "@/lib/coach/prompts";
@@ -66,14 +66,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
 
     // Public profile only — see the doc comment above for why this is the
     // one field of the owner's coach that is safe to decrypt server-side.
+    //
+    // Read from the cached envelope first, exactly like the chat route reads
+    // memoryCipher: this is a stranger-facing path and a profile uploaded
+    // minutes ago is not downloadable from 0G Storage yet. Falling straight
+    // to the network made every consultation of a recently minted coach fail.
     const svcKey = serviceKey();
-    const dl = await downloadDecrypted(ownerCoach.profileRoot, svcKey, (b) => {
-      try { JSON.parse(b.toString("utf8")); return true; } catch { return false; }
-    });
-    if (!dl.ok) {
-      return NextResponse.json({ error: `impossibile leggere il profilo di questo coach: ${dl.error}` }, { status: 502 });
+    let profileCipherText: string | null = ownerCoach.profileCipher;
+    if (!profileCipherText) {
+      const dl = await downloadDecrypted(ownerCoach.profileRoot, svcKey, (b) =>
+        canDecrypt(b.toString("utf8"), svcKey),
+      );
+      if (dl.ok) profileCipherText = dl.data.toString("utf8");
+      else console.warn(`ask: profile download for coach ${tokenId} failed`, dl.error);
     }
-    const profile = decryptJson(dl.data.toString("utf8"), svcKey, CoachProfileSchema);
+
+    // Last resort: what the coach is, from the public row. Its totals and pace
+    // trend are genuinely unavailable here, so they are empty rather than
+    // invented — the coach still answers in its own voice, which is what the
+    // asker came for, instead of the whole feature returning a 502.
+    const profileSource = ownerCoach.profileCipher ? "cache" : profileCipherText ? "storage" : "public-row";
+    const profile = profileCipherText
+      ? decryptJson(profileCipherText, svcKey, CoachProfileSchema)
+      : {
+          version: 1 as const,
+          name: ownerCoach.name,
+          personality: PersonalitySchema.parse(ownerCoach.personality),
+          totals: { runs: 0, km: 0 },
+          paceTrend: [],
+          styleNotes: PERSONALITY_STYLE[PersonalitySchema.parse(ownerCoach.personality)],
+        };
 
     // The asker's own latest run, plaintext columns only — never their own
     // encrypted memory either, so this route needs no userKeyHex from them.
@@ -114,7 +136,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
     return NextResponse.json({
       reply: completion.text,
       coach: { name: profile.name, personality: profile.personality },
-      disclaimer: `${profile.name}'s methodology applied to your run — not ${profile.name}'s own athlete's data.`,
+      // Where the coach's profile came from. "public-row" means its aggregate
+      // (totals, pace trend) could not be read and the answer is based on its
+      // personality alone — degraded, and said so rather than hidden.
+      profileSource,
+      disclaimer: `${profile.name} read your run in its own style. It has never seen your training history — and you never see its athlete's.`,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: e.status ?? 500 });

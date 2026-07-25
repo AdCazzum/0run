@@ -70,7 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href="/coaches"
               className="py-4 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean transition-colors duration-500 hover:text-orange"
             >
-              Directory
+              Coaches
             </Link>
             {ready && authenticated && (
               <button

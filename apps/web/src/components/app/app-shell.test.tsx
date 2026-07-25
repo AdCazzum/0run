@@ -21,9 +21,11 @@ describe("AppShell", () => {
   it("renders the three tabs twice (top nav + bottom bar) with the active marker on Runs", () => {
     render(<AppShell>content</AppShell>);
     for (const label of ["Runs", "Upload", "Coach"]) {
-      expect(screen.getAllByRole("link", { name: new RegExp(label, "i") })).toHaveLength(2);
+      // Anchored: the public "Coaches" link in the same bar would otherwise be
+      // counted as a third "Coach" tab.
+      expect(screen.getAllByRole("link", { name: new RegExp(`^${label}$`, "i") })).toHaveLength(2);
     }
-    const active = screen.getAllByRole("link", { name: /Runs/i });
+    const active = screen.getAllByRole("link", { name: /^Runs$/i });
     for (const link of active) expect(link.getAttribute("aria-current")).toBe("page");
   });
 

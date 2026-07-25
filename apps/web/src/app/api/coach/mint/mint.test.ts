@@ -517,7 +517,14 @@ describe("POST /api/coach/mint", () => {
     // Not yet settled: the response must not have waited on it.
     expect(dbState.coaches.get(1)?.ensName).toBeUndefined();
     expect(vi.mocked(assignSubname)).toHaveBeenCalledWith(
-      "kilian", "0x" + "22".repeat(20), { tokenId: "1", endpoint: "https://0run.fun/coach/1" },
+      "kilian",
+      "0x" + "22".repeat(20),
+      {
+        tokenId: "1",
+        endpoint: "https://0run.fun/coach/1",
+        // The avatar record is what makes the portrait show up in ENS clients.
+        avatar: "https://0run.fun/api/coach/1/avatar",
+      },
     );
 
     resolveEns({ name: "kilian.0run.eth", txHash: "0xenstx" });

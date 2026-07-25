@@ -173,12 +173,29 @@ describe("POST /api/coach/[tokenId]/ask", () => {
     expect(coachCompleteMock).not.toHaveBeenCalled();
   });
 
-  it("download del profilo fallito → 502, mai chiamato coachComplete", async () => {
+  it("profilo illeggibile → risponde comunque, ma dichiara di essere in versione ridotta", async () => {
+    // Il profilo aggregato (totali, andamento del passo) è cifrato su 0G
+    // Storage; se non si riesce a leggerlo, nome e personalità restano pubblici
+    // sulla riga del coach. Rispondere con quelli è degradato, non falso — e
+    // viene detto, invece di far fallire l'intera consultazione.
     downloadDecryptedMock.mockResolvedValueOnce({ ok: false, error: "0G storage down" });
     const { POST } = await import("./route");
     const res = await POST(req(), params("1"));
-    expect(res.status).toBe(502);
-    expect(coachCompleteMock).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.profileSource).toBe("public-row");
+    expect(coachCompleteMock).toHaveBeenCalled();
+  });
+
+  it("usa la cache del profilo quando c'è: nessun giro su 0G Storage", async () => {
+    // Il caso che rompeva la feature: un coach appena mintato ha il blob su 0G
+    // Storage ma non ancora scaricabile, quindi ogni consultazione falliva.
+    state.ownerCoach = { ...state.ownerCoach, profileCipher: "PROFILE_ENVELOPE_FROM_CACHE" };
+    const { POST } = await import("./route");
+    const res = await POST(req(), params("1"));
+    expect(res.status).toBe(200);
+    expect((await res.json()).profileSource).toBe("cache");
+    expect(downloadDecryptedMock).not.toHaveBeenCalled();
   });
 
   it("tokenId non numerico → 400", async () => {

@@ -1,4 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createCipheriv, randomBytes } from "node:crypto";
+
+/**
+ * The exact shape encryptJson produces (built locally because this file mocks
+ * that module). A download is validated by DECRYPTING it, so the fixture has
+ * to be a real envelope under the same key the request carries — plain JSON
+ * never was the stored format.
+ */
+function envelope(obj: unknown, key: Buffer): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const ct = Buffer.concat([cipher.update(JSON.stringify(obj), "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), ct]).toString("base64");
+}
 
 // Tutte le fixture qui sotto sono sintetiche (inventate per il test), MAI l'export
 // reale: è gitignored, contiene dati sanitari veri e il repo è pubblico (vedi
@@ -224,7 +238,10 @@ describe("POST /api/health-data", () => {
     _setDepsForTest({
       makeData: async () => ({ data: {}, rootHash: "0xhealthroot" }),
       doUpload: async () => ["0xstoragetx", null] as const,
-      doDownload: async () => Buffer.from(JSON.stringify({})),
+      // A real envelope under the same user key the request carries: the
+      // download is validated by decrypting it, which is the only check that
+      // proves the key matches (plain JSON never was the stored format).
+      doDownload: async () => Buffer.from(envelope({ hello: "memory" }, Buffer.from("aa".repeat(32), "hex"))),
     });
     const { POST } = await import("./route");
     const res = await POST(req(VALID_EXPORT));

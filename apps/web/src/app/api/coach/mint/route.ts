@@ -39,6 +39,11 @@ const MINT_BUDGET_MS = 90_000;
 // finalizing locked the user out of minting permanently, with no recovery path.
 const STALE_RESERVATION_MS = MINT_BUDGET_MS * 3;
 
+// Where this deployment answers. It ends up written into ENS text records and
+// the ERC-8004 registry — both permanent, both read by other people's software
+// — so it is configurable rather than hardcoded per environment.
+const SITE_URL = (process.env.SITE_URL ?? "https://0run.fun").replace(/\/$/, "");
+
 /**
  * The name of the constraint a unique violation broke, or null if the error is
  * anything else.
@@ -250,10 +255,12 @@ export async function POST(req: Request) {
     let memCt: string;
     let memPrep: Awaited<ReturnType<typeof prepareEncryptedUpload>>;
     let profPrep: Awaited<ReturnType<typeof prepareEncryptedUpload>>;
+    let profileCipher = "";
     try {
       const { memory, profile } = initialMemory(name, personality);
       memCt = encryptJson(memory, userKey);
       const profCt = encryptJson(profile, svcKey);
+      profileCipher = profCt;
       const enc = (s: string) => new TextEncoder().encode(s);
 
       // Roots are computed LOCALLY — pure merkle-tree math over the already
@@ -299,7 +306,7 @@ export async function POST(req: Request) {
     // The page at this URL may not exist yet; the URI is recorded as-is
     // regardless, same as any ERC-721 tokenURI pointing at a page that ships later.
     const startBackgroundRegistration = (tokenId: string) => {
-      registerAgent(tokenId, `https://0run.fun/coach/${tokenId}`)
+      registerAgent(tokenId, `${SITE_URL}/coach/${tokenId}`)
         .then(async (result) => {
           if ("error" in result) {
             console.error("mint: background ERC-8004 registration failed", result.error);
@@ -318,7 +325,11 @@ export async function POST(req: Request) {
     // (see lib/ens/subname.ts, same receipt discipline as registerAgent).
     const startBackgroundEns = (tokenId: string) => {
       const label = slugifyLabel(name, tokenId);
-      assignSubname(label, user.wallet, { tokenId, endpoint: `https://0run.fun/coach/${tokenId}` })
+      assignSubname(label, user.wallet, {
+        tokenId,
+        endpoint: `${SITE_URL}/coach/${tokenId}`,
+        avatar: `${SITE_URL}/api/coach/${tokenId}/avatar`,
+      })
         .then(async (result) => {
           if ("error" in result) {
             console.error("mint: background ENS assignment failed", result.error);
@@ -360,7 +371,7 @@ export async function POST(req: Request) {
       // Writing tokenId here is also what takes the row out of reach of the stale
       // reclaim above, so it must be part of this single update, never a later one.
       await db.update(coaches)
-        .set({ tokenId, mintTx: txHash, memoryRoot: memPrep.rootHash, profileRoot: profPrep.rootHash, memoryCipher: memCt })
+        .set({ tokenId, mintTx: txHash, memoryRoot: memPrep.rootHash, profileRoot: profPrep.rootHash, memoryCipher: memCt, profileCipher })
         .where(eq(coaches.userId, user.userId));
       startBackgroundUpload();
       startBackgroundRegistration(tokenId);

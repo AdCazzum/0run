@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
-import { decryptJson } from "@/lib/crypto/aes";
+import { decryptJson, canDecrypt } from "@/lib/crypto/aes";
 import { downloadDecrypted, prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { parseMemory, persistMemory, setHealthSnapshot } from "@/lib/coach/memory";
 import { toBytes32, updateRegistry } from "@/lib/zerog/contracts";
@@ -128,9 +128,7 @@ export async function POST(req: Request) {
     if (coach.memoryCipher) {
       memoryCipherText = coach.memoryCipher;
     } else {
-      const dl = await downloadDecrypted(coach.memoryRoot, userKey, (buf) => {
-        try { JSON.parse(buf.toString("utf8")); return true; } catch { return false; }
-      });
+      const dl = await downloadDecrypted(coach.memoryRoot, userKey, (b) => canDecrypt(b.toString("utf8"), userKey));
       if (!dl.ok) return NextResponse.json({ error: dl.error }, { status: 502 });
       memoryCipherText = dl.data.toString("utf8");
     }

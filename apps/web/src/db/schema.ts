@@ -63,6 +63,15 @@ export const coaches = pgTable("coaches", {
   // as agentId above: rows minted before this column existed predate it, and
   // a coach ENS assignment failed for is still a fully valid coach.
   ensName: text("ens_name"),
+  // Cache of the SAME service-key envelope stored at profileRoot on 0G
+  // Storage — the aggregate a stranger's request is allowed to see (name,
+  // personality, totals, pace trend, style notes), never the private layer.
+  // Exists for the identical reason as memoryCipher above: "ask this coach"
+  // is a hot, stranger-facing path, and a freshly uploaded blob is not
+  // downloadable from 0G Storage for 16+ minutes. Nullable: rows minted
+  // before this column existed fall back to downloading profileRoot.
+  profileCipher: text("profile_cipher"),
+
   // --- Avatar (0G Compute, z-image-turbo) ---------------------------------
   // The coach's face, generated once at mint from a prompt derived from its
   // name and personality (lib/avatar/generate.ts). Stored as base64 PNG in the
