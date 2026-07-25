@@ -60,30 +60,22 @@ export default function UploadPage() {
   }
 
   return (
-    <section className="relative mx-auto grid max-w-[1600px] grid-cols-12 gap-y-16 px-8 pb-32 pt-40 md:px-16">
-      <span
-        aria-hidden
-        className="absolute right-8 top-32 hidden font-sans text-[10px] uppercase tracking-[0.3em] text-ocean lg:block md:right-16"
-        style={{ writingMode: "vertical-rl" }}
-      >
-        0run / Vol. 01 — Upload
-      </span>
-
-      <div className="col-span-12 md:col-span-9 md:col-start-2">
-        <div className="mb-8 flex items-center gap-4">
-          <span aria-hidden className="h-px w-12 bg-navy" />
+    <section className="flex flex-col gap-8 md:gap-12">
+      <div>
+        <div className="mb-6 flex items-center gap-4">
+          <span aria-hidden className="h-px w-8 bg-navy md:w-12" />
           <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">New run</span>
         </div>
-        <h1 className="font-serif text-5xl leading-[0.9] tracking-tight text-navy md:text-7xl">
+        <h1 className="font-serif text-4xl leading-[0.95] tracking-tight text-navy md:text-6xl">
           Bring your <em className="italic text-orange">run</em>.
         </h1>
-        <p className="mt-6 max-w-xl font-sans text-lg leading-relaxed text-navy">
+        <p className="mt-5 max-w-xl font-sans text-base leading-relaxed text-navy md:text-lg">
           Upload a GPX file. It is encrypted on your device key and stored on 0G — your coach
           reads it, remembers it, and reports back.
         </p>
       </div>
 
-      <div className="col-span-12 md:col-span-7 md:col-start-2">
+      <div className="max-w-2xl">
         <label
           htmlFor="gpx-input"
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -93,7 +85,7 @@ export default function UploadPage() {
             setDragOver(false);
             pickFile(e.dataTransfer.files?.[0] ?? null);
           }}
-          className={`flex min-h-[16rem] cursor-pointer flex-col items-center justify-center gap-4 border border-navy px-8 text-center transition-colors duration-500 ${
+          className={`flex min-h-[13rem] cursor-pointer flex-col items-center justify-center gap-4 border border-navy px-6 text-center transition-colors duration-500 md:min-h-[16rem] md:px-8 ${
             dragOver ? "bg-peach/40" : "bg-transparent"
           }`}
         >
@@ -114,7 +106,7 @@ export default function UploadPage() {
             </>
           ) : (
             <>
-              <span className="font-serif text-3xl italic text-navy">Drop your GPX here</span>
+              <span className="font-serif text-2xl italic text-navy md:text-3xl">Drop your GPX here</span>
               <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">
                 or click to browse
               </span>
@@ -126,11 +118,11 @@ export default function UploadPage() {
 
         <div className="mt-8">
           {ready && !authenticated ? (
-            <Button variant="primary" onClick={() => login()}>
+            <Button variant="primary" className="w-full md:w-auto" onClick={() => login()}>
               Sign in to continue
             </Button>
           ) : (
-            <Button variant="primary" disabled={!ready || !file || uploading} onClick={handleUpload}>
+            <Button variant="primary" className="w-full md:w-auto" disabled={!ready || !file || uploading} onClick={handleUpload}>
               {uploading ? "Uploading…" : "Upload run"}
             </Button>
           )}

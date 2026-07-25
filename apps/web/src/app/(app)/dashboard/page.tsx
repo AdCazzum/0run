@@ -3,9 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getAccessToken, usePrivy } from "@privy-io/react-auth";
-import { explorerTx } from "@0run/shared";
 import { Button } from "@/components/ui/button";
-import { Chat } from "@/components/run/chat";
 import { RunCard } from "@/components/run/run-card";
 import type { CoachSummary, RunRow } from "@/components/run/types";
 
@@ -49,99 +47,95 @@ export default function DashboardPage() {
   }, [feed, load]);
 
   if (!ready || (authenticated && !feed && !error)) {
-    return <Shell><Overline>loading your runs…</Overline></Shell>;
+    return <Overline>loading your runs…</Overline>;
   }
   if (error) {
-    return <Shell><Overline>{error}</Overline></Shell>;
+    return <Overline>{error}</Overline>;
   }
   if (!feed) return null;
 
   // State 1: no coach yet — nothing else on this page means anything until one exists.
   if (!feed.coach) {
     return (
-      <Shell>
+      <section>
         <Overline>Step one</Overline>
-        <h1 className="mt-8 max-w-3xl font-serif text-5xl leading-[0.9] text-navy md:text-7xl">
+        <h1 className="mt-6 max-w-2xl font-serif text-3xl leading-[1.05] text-navy md:text-5xl">
           First, mint the <em className="italic text-orange">coach</em> that will read every run.
         </h1>
-        <p className="mt-10 max-w-md font-sans text-lg leading-relaxed text-navy">
+        <p className="mt-6 max-w-md font-sans text-base leading-relaxed text-navy">
           It becomes an intelligent NFT you own on 0G. Its memory is encrypted with a key derived from
           your wallet, and it grows with every kilometre you give it.
         </p>
-        <div className="mt-12">
-          <Link href="/mint"><Button variant="primary">Mint your coach</Button></Link>
+        <div className="mt-8">
+          <Link href="/mint"><Button variant="primary" className="w-full md:w-auto">Mint your coach</Button></Link>
         </div>
-      </Shell>
+      </section>
     );
   }
 
   return (
-    <Shell>
-      <header className="grid grid-cols-12 gap-8 border-b border-navy/15 pb-12">
-        <div className="col-span-12 md:col-span-7">
+    <section>
+      {/* The coach owns this page even when it's a feed: who is reading your
+          runs, and how much it already remembers. Full identity (mint tx,
+          health data, chat) lives on the Coach tab. */}
+      <header className="flex items-end justify-between gap-4 border-b border-navy/15 pb-6 md:pb-8">
+        <div>
           <Overline>Your coach</Overline>
-          <h1 className="mt-6 font-serif text-4xl leading-tight text-navy md:text-6xl">{feed.coach.name}</h1>
-          <p className="mt-4 font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
-            {feed.coach.personality.replace("_", " ")} · agent #{feed.coach.tokenId}
+          <h1 className="mt-3 font-serif text-2xl leading-tight text-navy md:text-4xl">{feed.coach.name}</h1>
+          <p className="mt-2 font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
+            {feed.coach.personality.replace("_", " ")} · agent #{feed.coach.tokenId} ·{" "}
+            {feed.runs.length === 0
+              ? "no runs yet"
+              : `${feed.runs.length} ${feed.runs.length === 1 ? "run" : "runs"} remembered`}
           </p>
-          {feed.coach.mintTx && (
-            <a
-              className="mt-4 inline-block py-3 font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
-              href={explorerTx(feed.coach.mintTx)} target="_blank" rel="noopener noreferrer"
-            >
-              minted on 0G ↗
-            </a>
-          )}
         </div>
-        <div className="col-span-12 flex flex-col items-start gap-6 md:col-span-4 md:col-start-9 md:items-end">
-          <Link href="/upload"><Button variant="primary">Upload a run</Button></Link>
-          {/* Health data is context, not an activity: it never appears in the feed,
-              only as coverage here, and its effect shows up inside the reports. */}
-          <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
-            health data · not connected
-          </span>
-        </div>
+        <Link
+          href="/coach"
+          className="shrink-0 py-3 font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
+        >
+          Talk to it ↗
+        </Link>
       </header>
 
       {feed.runs.length === 0 ? (
-        <section className="py-24">
-          <Overline>No runs yet</Overline>
-          <h2 className="mt-8 max-w-2xl font-serif text-4xl leading-[0.95] text-navy md:text-6xl">
+        <div className="mt-8 md:mt-12">
+          <h2 className="max-w-2xl font-serif text-3xl leading-[1.05] text-navy md:text-5xl">
             Give it the first <em className="italic text-orange">GPX</em> and it starts remembering.
           </h2>
-          <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
+          <p className="mt-6 max-w-md font-sans text-base leading-relaxed text-navy">
             Export a run from Workout Copy, drop the file here, and the coach will read it against
             everything that comes after. Encryption happens before anything leaves your browser session.
           </p>
-          <div className="mt-12"><Link href="/upload"><Button variant="primary">Upload your first run</Button></Link></div>
-        </section>
+          <div className="mt-8">
+            <Link href="/upload"><Button variant="primary" className="w-full md:w-auto">Upload your first run</Button></Link>
+          </div>
+        </div>
       ) : (
-        <section className="grid grid-cols-12 gap-x-8 gap-y-16 py-16">
-          {feed.runs.map((run, i) => (
-            <div
-              key={run.id}
-              // Offset alternating columns: an editorial index, not a symmetric grid.
-              className={i % 2 === 0 ? "col-span-12 md:col-span-7" : "col-span-12 md:col-span-6 md:col-start-7"}
+        <>
+          <div className="mt-8 flex items-end justify-between gap-4 md:mt-12">
+            <Overline>Your runs</Overline>
+            <Link
+              href="/upload"
+              className="hidden py-3 font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline md:inline-block"
             >
-              <RunCard run={run} />
-            </div>
-          ))}
-        </section>
+              Upload a run ↗
+            </Link>
+          </div>
+          <div className="mt-6 flex flex-col gap-6 md:gap-10">
+            {feed.runs.map((run) => (
+              <RunCard key={run.id} run={run} />
+            ))}
+          </div>
+        </>
       )}
-
-      <Chat />
-    </Shell>
+    </section>
   );
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return <main className="relative mx-auto max-w-[1600px] px-8 py-20 md:px-16 md:py-32">{children}</main>;
 }
 
 function Overline({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-4">
-      <span aria-hidden className="h-px w-12 bg-navy" />
+      <span aria-hidden className="h-px w-8 bg-navy md:w-12" />
       <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">{children}</span>
     </div>
   );
