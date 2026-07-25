@@ -32,11 +32,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${playfairDisplay.variable} ${inter.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col font-sans bg-cream text-navy">
+    <html lang="en" className="h-full antialiased">
+      <body
+        className={`${playfairDisplay.variable} ${inter.variable} min-h-full flex flex-col font-sans bg-cream text-navy`}
+      >
         <PageChrome />
         <Providers>{children}</Providers>
       </body>
