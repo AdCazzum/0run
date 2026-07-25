@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, serial, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique } from "drizzle-orm/pg-core";
 import type { RunStats } from "@0run/shared";
 
 export type RunStep = "encrypt" | "store_gpx" | "update_memory" | "registry_tx" | "score" | "inference";
@@ -232,3 +232,18 @@ export const claims = pgTable("claims", {
 }, (table) => [
   unique("claims_event_nullifier_unique").on(table.eventId, table.nullifierHash),
 ]);
+
+// AgentKit per-human usage counters (spec 2026-07-25-agentkit-human-backing).
+// One row per (endpoint bucket, humanId); the endpoint key embeds the UTC day
+// ("a2a:2026-07-25") so the "daily" window needs no cron and no timestamp
+// arithmetic. Deliberately content-free — no wallets, no questions, no ENS
+// names: accountability metadata only.
+export const agentkitUsage = pgTable(
+  "agentkit_usage",
+  {
+    endpoint: text("endpoint").notNull(),
+    humanId: text("human_id").notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.endpoint, t.humanId] }) }),
+);

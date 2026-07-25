@@ -29,6 +29,17 @@ export function humanBackingEnforced(): boolean {
   return process.env.REQUIRE_HUMAN_BACKED_MINT === "1";
 }
 
+/** Same opt-in convention as the mint gate, for the agent→agent surface. */
+export function a2aHumanBackingEnforced(): boolean {
+  return process.env.REQUIRE_HUMAN_BACKED_A2A === "1";
+}
+
+/** Consults per day per humanId, across ALL agents that human backs. */
+export function a2aDailyQuotaPerHuman(): number {
+  const n = Number(process.env.A2A_DAILY_QUOTA_PER_HUMAN);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 20;
+}
+
 export type GateResult =
   /** Let the request through. `humanId` is null when the gate is not enforced. */
   | { ok: true; humanId: string | null }
