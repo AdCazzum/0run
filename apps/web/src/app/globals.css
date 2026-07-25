@@ -12,6 +12,12 @@
 
 :root { background: var(--color-cream); color: var(--color-navy); }
 
+/* Caret for the hero's rotating word (components/landing/typewriter.tsx). A
+   hard on/off step, not a fade: a cursor either blinks or it doesn't. Under
+   reduced motion the rule below stops the animation, which leaves the caret
+   permanently visible — correct, since the word is then static too. */
+@keyframes orun-caret-blink { 0%, 45% { opacity: 1 } 50%, 95% { opacity: 0 } 100% { opacity: 1 } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; transform: none !important; }
 }

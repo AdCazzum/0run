@@ -10,10 +10,14 @@ import { BenefitsSection } from "./benefits-section";
 
 describe("landing", () => {
   it("hero: headline serif con parola italic orange, overline con linea decorativa, CTA", () => {
-    render(<Hero />);
-    const em = screen.getByText("Coach.");
-    expect(em.className).toContain("italic");
-    expect(em.className).toContain("text-orange");
+    const { container } = render(<Hero />);
+    // The rotating word (typewriter.tsx) renders twice: the animated copy that
+    // carries the styling, and a static screen-reader copy of the first word.
+    const animated = container.querySelector("h1 [aria-hidden]")!;
+    expect(animated.textContent).toBe("Coach.");
+    expect(animated.className).toContain("italic");
+    expect(animated.className).toContain("text-orange");
+    expect(container.querySelector("h1 .sr-only")!.textContent).toBe("Coach.");
     expect(screen.getByTestId("hero-overline-line").className).toContain("h-px");
     expect(screen.getByRole("button", { name: /start running/i })).toBeTruthy();
   });

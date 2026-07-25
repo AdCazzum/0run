@@ -3,7 +3,10 @@ import Link from "next/link";
 import { useLogin, usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Typewriter } from "@/components/landing/typewriter";
 import { usePrivyReady } from "@/app/providers";
+
+const ROTATING_WORDS = ["Coach", "Data", "Training", "Health"];
 
 /**
  * The Privy hooks live here, in a component that is only ever rendered when the
@@ -57,7 +60,10 @@ export function Hero() {
         <h1 className="font-serif text-6xl leading-[0.9] tracking-tight text-navy md:text-9xl">
           Own your
           <br />
-          <em className="italic text-orange">Coach.</em>
+          {/* The rotating word is the promise: the coach, and everything it is
+              built out of, belongs to the athlete. "Coach" leads and is the
+              version screen readers get — see typewriter.tsx. */}
+          <Typewriter words={ROTATING_WORDS} className="font-serif italic text-orange" />
           <br />
           Own your runs.
         </h1>
