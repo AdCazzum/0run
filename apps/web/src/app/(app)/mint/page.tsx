@@ -191,9 +191,9 @@ export default function MintPage() {
                         setSelected(p.id);
                       }
                     }}
-                    className="cursor-pointer text-left outline-none focus-visible:ring-1 focus-visible:ring-orange focus-visible:ring-offset-2"
+                    className="cursor-pointer rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-orange/60 focus-visible:ring-offset-2 focus-visible:ring-offset-cream"
                   >
-                    <Card featured={isSelected} className={isSelected ? "bg-peach/40" : ""}>
+                    <Card featured={isSelected}>
                       <h3 className="font-serif text-2xl text-navy md:text-3xl">{p.title}</h3>
                       <p className="mt-3 font-sans text-sm leading-relaxed text-ocean md:mt-4">{PERSONALITY_STYLE[p.id]}</p>
                     </Card>

@@ -34,7 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-40 border-b border-navy/15 bg-cream/90 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-navy/10 bg-cream/90 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[1100px] items-center justify-between px-5 md:px-8">
           <Link
             href="/dashboard"
@@ -81,7 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav
         aria-label="Sections"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-navy bg-cream pb-[env(safe-area-inset-bottom)] md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-navy/10 bg-cream/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,78,137,0.06)] backdrop-blur md:hidden"
       >
         <div className="grid grid-cols-3">
           {TABS.map((tab) => {

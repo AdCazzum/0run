@@ -85,8 +85,8 @@ export default function UploadPage() {
             setDragOver(false);
             pickFile(e.dataTransfer.files?.[0] ?? null);
           }}
-          className={`flex min-h-[13rem] cursor-pointer flex-col items-center justify-center gap-4 border border-navy px-6 text-center transition-colors duration-500 md:min-h-[16rem] md:px-8 ${
-            dragOver ? "bg-peach/40" : "bg-transparent"
+          className={`flex min-h-[13rem] cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 text-center shadow-sm transition-colors duration-500 md:min-h-[16rem] md:px-8 ${
+            dragOver ? "border-orange bg-peach/40" : "border-navy/25 bg-white/40"
           }`}
         >
           <input

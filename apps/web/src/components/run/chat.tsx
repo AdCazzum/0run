@@ -57,7 +57,7 @@ export function Chat({ runId }: { runId?: number }) {
       <div className="space-y-8">
         {turns.map((turn, i) =>
           turn.role === "user" ? (
-            <p key={i} className="ml-auto max-w-md bg-peach/40 p-4 font-sans text-base leading-relaxed text-navy">
+            <p key={i} className="ml-auto max-w-md rounded-2xl rounded-br-md bg-peach/50 px-4 py-3 font-sans text-base leading-relaxed text-navy shadow-sm">
               {turn.content}
             </p>
           ) : (
