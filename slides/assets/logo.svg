@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="0run — the zero is the track, the dot is the runner">
+  <!-- 0run mark: a serif-contrast zero (the track) with the runner on it.
+       Brand: cream #EFEFD0 · navy #004E89 · orange #FF6B35 -->
+  <rect width="512" height="512" fill="#EFEFD0"/>
+  <rect x="18" y="18" width="476" height="476" fill="none" stroke="#004E89" stroke-opacity="0.15" stroke-width="2"/>
+  <g transform="rotate(-10 256 256)">
+    <!-- the zero: thick sides, thin top and bottom, like Playfair's -->
+    <path fill="#004E89" fill-rule="evenodd" d="
+      M 256 96
+      A 122 160 0 1 0 256 416
+      A 122 160 0 1 0 256 96
+      Z
+      M 256 120
+      A 66 136 0 1 1 256 392
+      A 66 136 0 1 1 256 120
+      Z"/>
+    <!-- the runner, mid-stride on the track -->
+    <circle cx="318" cy="146" r="24" fill="#FF6B35"/>
+  </g>
+</svg>

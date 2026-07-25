@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>0run — pitch deck · ETHGlobal Lisbon 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --cream: #EFEFD0;
+    --navy: #004E89;
+    --peach: #F7C59F;
+    --ocean: #1A659E;
+    --orange: #FF6B35;
+    --serif: "Playfair Display", ui-serif, serif;
+    --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --hairline: rgba(0, 78, 137, 0.15);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--cream);
+    color: var(--navy);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    height: 100dvh;
+    overflow-y: auto;
+    scroll-snap-type: y mandatory;
+  }
+  .slide {
+    position: relative;
+    min-height: 100dvh;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    display: flex;
+    flex-direction: column;
+    padding: clamp(2rem, 5vh, 4rem) clamp(1.5rem, 6vw, 6rem);
+    border-top: 1px solid var(--hairline);
+    overflow: hidden;
+  }
+  .slide:first-child { border-top: none; }
+
+  /* ---------- shared editorial atoms (mirrors 0run.fun) ---------- */
+  .overline { display: flex; align-items: center; gap: 1rem; }
+  .overline::before { content: ""; height: 1px; width: 3rem; background: var(--navy); }
+  .overline span {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--ocean);
+  }
+  .slide.dark .overline::before { background: var(--cream); }
+  .slide.dark .overline span { color: var(--peach); }
+
+  h1, h2 { font-family: var(--serif); font-weight: 400; line-height: 0.95; letter-spacing: -0.02em; }
+  /* Playfair's oldstyle zero reads as a lowercase "o" — force lining figures so
+     "0G" and "0run" keep the brand's digit. */
+  h1, h2, h3, h4 { font-variant-numeric: lining-nums; font-feature-settings: "lnum" 1; }
+  em { font-family: var(--serif); font-style: italic; color: var(--orange); }
+  .num { font-family: var(--serif); font-style: italic; font-size: 1.5rem; color: var(--orange); }
+
+  .vertical-note {
+    position: absolute; right: clamp(1rem, 3vw, 2.5rem); top: 7rem;
+    writing-mode: vertical-rl;
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.3em; color: var(--ocean);
+  }
+  .slide.dark .vertical-note { color: var(--peach); }
+  @media (max-width: 900px) { .vertical-note { display: none; } }
+
+  .foot {
+    margin-top: auto; padding-top: 2rem;
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.25em; color: var(--ocean);
+  }
+  .slide.dark .foot { color: var(--peach); }
+  .foot .pg { font-family: var(--serif); font-style: italic; font-size: 1rem; letter-spacing: 0; text-transform: none; color: var(--orange); }
+
+  .chip {
+    display: inline-block; padding: 0.35rem 0.8rem; border: 1px solid var(--hairline);
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--ocean);
+    white-space: nowrap;
+  }
+  a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--orange); transition: color .4s; }
+  a:hover { color: var(--orange); }
+
+  /* ---------- staggered reveal ---------- */
+  .r { opacity: 0; transform: translateY(18px); transition: opacity .8s ease, transform .8s ease; }
+  .slide.in .r { opacity: 1; transform: none; }
+  .slide.in .r:nth-child(1), .slide.in [data-d="1"] { transition-delay: .05s; }
+  .slide.in [data-d="2"] { transition-delay: .18s; }
+  .slide.in [data-d="3"] { transition-delay: .31s; }
+  .slide.in [data-d="4"] { transition-delay: .44s; }
+  .slide.in [data-d="5"] { transition-delay: .57s; }
+  .slide.in [data-d="6"] { transition-delay: .7s; }
+
+  /* ---------- dots nav ---------- */
+  nav.dots {
+    position: fixed; right: 1.1rem; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 0.7rem; z-index: 10;
+  }
+  nav.dots a {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: transparent; border: 1px solid var(--ocean);
+    transition: background .3s, transform .3s;
+  }
+  nav.dots a.active { background: var(--orange); border-color: var(--orange); transform: scale(1.35); }
+  @media (max-width: 900px) { nav.dots { display: none; } }
+
+  /* ================= 01 · cover ================= */
+  #cover .hero { margin-top: auto; }
+  #cover h1 { font-size: clamp(3.2rem, 10.5vw, 8.5rem); margin-top: 2rem; }
+  #cover .caret {
+    display: inline-block; width: 3px; height: 0.82em; background: var(--orange);
+    vertical-align: baseline; margin-left: 0.08em; transform: translateY(0.12em);
+    animation: caret-blink 1.1s step-end infinite;
+  }
+  @keyframes caret-blink { 0%,45% {opacity:1} 50%,95% {opacity:0} 100% {opacity:1} }
+  #cover .sub {
+    margin-top: 2.5rem; max-width: 28rem; font-size: 1.05rem; line-height: 1.7;
+  }
+  #cover .meta { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 2rem; }
+
+  /* ================= 02 · builder ================= */
+  .two-col { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: clamp(2rem, 5vw, 5rem); margin-top: 3rem; align-items: start; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+  #builder h2 { font-size: clamp(2.6rem, 6.5vw, 5.5rem); margin-top: 2rem; }
+  #builder .bio { font-size: 1.02rem; line-height: 1.75; max-width: 34rem; }
+  #builder .bio + .bio { margin-top: 1.2rem; }
+  .fact-list { border-top: 1px solid var(--hairline); }
+  .fact-list li {
+    list-style: none; display: grid; grid-template-columns: 8.5rem 1fr; gap: 1rem;
+    padding: 0.95rem 0; border-bottom: 1px solid var(--hairline); font-size: 0.9rem; line-height: 1.55;
+  }
+  .fact-list li b { font-weight: 500; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.22em; color: var(--ocean); padding-top: 0.25rem; }
+  .roles { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.6rem; }
+
+  /* ================= 03 · stack ================= */
+  #stack h2 { font-size: clamp(2.4rem, 6vw, 5rem); margin-top: 2rem; max-width: 20ch; }
+  .stack-grid {
+    margin-top: 3rem; border-top: 1px solid var(--hairline);
+    display: grid; grid-template-columns: repeat(3, 1fr);
+  }
+  @media (max-width: 1000px) { .stack-grid { grid-template-columns: 1fr; } }
+  .stack-cell { padding: 1.6rem 1.8rem 1.9rem 0; border-bottom: 1px solid var(--hairline); }
+  .stack-cell h3 { font-family: var(--serif); font-weight: 400; font-size: 1.55rem; margin-top: 0.9rem; }
+  .stack-cell p { margin-top: 0.7rem; font-size: 0.85rem; line-height: 1.65; max-width: 30rem; }
+  .stack-cell .tag { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.25em; color: var(--ocean); }
+  .stack-cell .num { font-size: 1.2rem; }
+
+  /* ================= 04 · architecture ================= */
+  #arch h2 { font-size: clamp(2.2rem, 5vw, 4.2rem); margin-top: 1.1rem; }
+  #arch .foot { padding-top: 1.1rem; }
+  .diagram { margin-top: 0.9rem; display: grid; grid-template-columns: minmax(0,5fr) 4.5rem minmax(0,6fr) minmax(9rem,10rem) minmax(0,7fr); gap: 0.7rem 0; align-items: stretch; }
+  .dlabel {
+    display: flex; align-items: baseline; gap: 0.8rem; margin-top: 1rem;
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.25em; color: var(--ocean);
+  }
+  .dlabel .num { font-size: 1rem; }
+  .dlabel::after { content: ""; height: 1px; flex: 1; background: var(--hairline); align-self: center; }
+  .dbox {
+    border: 1px solid var(--navy); padding: 1rem 1.15rem; background: var(--cream);
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .dbox.accent { background: var(--peach); }
+  .dbox .t { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.25em; color: var(--ocean); }
+  .dbox h4 { font-family: var(--serif); font-weight: 400; font-size: 1.25rem; margin-top: 0.35rem; }
+  .dbox p { font-size: 0.74rem; line-height: 1.55; margin-top: 0.45rem; }
+  .dbox code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.68rem; color: var(--ocean); }
+  .span3 { grid-row: span 3; }
+  .arrow { position: relative; display: flex; align-items: center; justify-content: center; }
+  .arrow::before {
+    content: ""; position: absolute; left: 8%; right: 8%; top: 50%; height: 1px; background: var(--navy);
+  }
+  .arrow::after {
+    content: ""; position: absolute; right: 8%; top: 50%; width: 7px; height: 7px;
+    border-top: 1px solid var(--navy); border-right: 1px solid var(--navy);
+    transform: translateY(-50%) rotate(45deg) translateX(-1px);
+  }
+  .arrow span {
+    position: relative; z-index: 1; background: var(--cream); padding: 0 0.5rem;
+    font-size: 0.56rem; text-transform: uppercase; letter-spacing: 0.18em; color: var(--orange); text-align: center; line-height: 1.5;
+  }
+  .rail { margin-top: 1.4rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; }
+  .rail .dbox { border-style: dashed; border-color: var(--ocean); }
+  @media (max-width: 1000px) {
+    .diagram { grid-template-columns: 1fr; }
+    .span3 { grid-row: auto; }
+    .arrow { min-height: 3rem; }
+    .arrow::before { left: 50%; right: auto; top: 12%; bottom: 12%; height: auto; width: 1px; }
+    .arrow::after { right: auto; left: 50%; top: auto; bottom: 12%; transform: translateX(-50%) rotate(135deg); }
+    .rail { grid-template-columns: 1fr; }
+  }
+
+  /* ================= 05 · tracks ================= */
+  #tracks h2 { font-size: clamp(2.4rem, 6vw, 5rem); margin-top: 2rem; }
+  .tracks-grid { margin-top: 3rem; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--hairline); }
+  @media (max-width: 1000px) { .tracks-grid { grid-template-columns: 1fr; } }
+  .track { padding: 1.8rem 1.8rem 2rem 0; border-bottom: 1px solid var(--hairline); }
+  .track .prize { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.25em; color: var(--ocean); }
+  .track h3 { font-family: var(--serif); font-weight: 400; font-size: 1.9rem; margin-top: 0.8rem; }
+  .track ul { margin-top: 1.1rem; }
+  .track li {
+    list-style: none; font-size: 0.82rem; line-height: 1.6; padding: 0.55rem 0 0.55rem 1.5rem;
+    border-bottom: 1px dashed var(--hairline); position: relative;
+  }
+  .track li::before { content: "—"; color: var(--orange); position: absolute; left: 0; }
+  .track li b { font-weight: 600; }
+
+  /* ================= 06 · closing ================= */
+  .slide.dark { background: var(--navy); color: var(--cream); }
+  .slide.dark .hairline, .slide.dark .fact-list li { border-color: rgba(239,239,208,0.2); }
+  #close h2 { font-size: clamp(3rem, 9vw, 7.5rem); margin-top: auto; }
+  #close .links { display: flex; flex-wrap: wrap; gap: 2.5rem; margin-top: 3rem; }
+  #close .links div b { display: block; font-weight: 500; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.25em; color: var(--peach); margin-bottom: 0.5rem; }
+  #close .links div span { font-size: 0.95rem; }
+  #close a { border-bottom-color: var(--orange); }
+  #close a:hover { color: var(--peach); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+    .r { opacity: 1; transform: none; }
+    html { scroll-behavior: auto; }
+  }
+  @media print {
+    main { height: auto; overflow: visible; }
+    .slide { min-height: 100vh; page-break-after: always; }
+    nav.dots { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="dots" aria-label="Slides">
+  <a href="#cover" aria-label="Cover"></a>
+  <a href="#builder" aria-label="The builder"></a>
+  <a href="#stack" aria-label="The stack"></a>
+  <a href="#arch" aria-label="Architecture"></a>
+  <a href="#tracks" aria-label="Tracks"></a>
+  <a href="#close" aria-label="Closing"></a>
+</nav>
+
+<main>
+
+  <!-- ============ 01 · COVER ============ -->
+  <section class="slide" id="cover">
+    <span class="vertical-note" aria-hidden="true">0run / Vol. 01 — Lisboa</span>
+    <div class="overline r"><span>0run — ETHGlobal Lisbon 2026</span></div>
+    <div class="hero">
+      <h1 class="r" data-d="2">Own your<br /><em><span id="typed">Coach</span></em><span class="caret" aria-hidden="true"></span><br />Own your runs.</h1>
+      <p class="sub r" data-d="3">
+        A platform of AI running coaches, each minted as an intelligent NFT on 0G.
+        Every coach remembers your runs, learns how you train, and consults other
+        coaches by name over ENS — and it is owned by its athlete, not rented from us.
+      </p>
+      <div class="meta r" data-d="4">
+        <span class="chip">Live — 0run.fun</span>
+        <span class="chip">0G Galileo · chainId 16602</span>
+        <span class="chip">ERC-7857 iNFT</span>
+      </div>
+    </div>
+    <div class="foot"><span>The AI running coach you own</span><span class="pg">01 / 06</span></div>
+  </section>
+
+  <!-- ============ 02 · THE BUILDER ============ -->
+  <section class="slide" id="builder">
+    <span class="vertical-note" aria-hidden="true">0run / The builder</span>
+    <div class="overline r"><span>Who is building this</span></div>
+    <h2 class="r" data-d="2">Ivan Sala.<br /><em>CTO, engineer, runner.</em></h2>
+    <div class="two-col">
+      <div>
+        <p class="bio r" data-d="3">
+          CTO at <a href="https://humancraft.tech" target="_blank" rel="noreferrer">humancraft.tech</a>,
+          where technology strategy meets shipped product. Years of leading engineering
+          teams and building end-to-end: smart contracts to frontend, infrastructure to AI.
+        </p>
+        <p class="bio r" data-d="4">
+          Driven by a passion for AI and web3 — and stubborn about one thing:
+          <em>owning the stack</em>. Everything in 0run is self-hosted, inspectable,
+          and verifiable on-chain.
+        </p>
+        <div class="roles r" data-d="5">
+          <span class="chip">Solidity</span>
+          <span class="chip">Full-stack</span>
+          <span class="chip">AI integration</span>
+          <span class="chip">DevOps / self-hosted</span>
+        </div>
+      </div>
+      <ul class="fact-list r" data-d="4">
+        <li><b>Role</b><span>Chief Technology Officer, humancraft.tech</span></li>
+        <li><b>LinkedIn</b><span><a href="https://www.linkedin.com/in/ivan-sala/" target="_blank" rel="noreferrer">linkedin.com/in/ivan-sala</a></span></li>
+        <li><b>GitHub</b><span><a href="https://github.com/slavni96" target="_blank" rel="noreferrer">github.com/slavni96</a></span></li>
+        <li><b>This week</b><span>Designed, built and deployed 0run: contracts, app, CI/CD and live demo</span></li>
+      </ul>
+    </div>
+    <div class="foot"><span>0run — ETHGlobal Lisbon 2026</span><span class="pg">02 / 06</span></div>
+  </section>
+
+  <!-- ============ 03 · THE STACK ============ -->
+  <section class="slide" id="stack">
+    <span class="vertical-note" aria-hidden="true">0run / The stack</span>
+    <div class="overline r"><span>Technologies</span></div>
+    <h2 class="r" data-d="2">Verifiable <em>by default.</em></h2>
+    <div class="stack-grid">
+      <div class="stack-cell r" data-d="2">
+        <span class="num">01</span>
+        <h3>0G Chain</h3>
+        <span class="tag">Ownership</span>
+        <p>The coach is an ERC-7857-style intelligent NFT (<code>OrunAgentNFT</code>) on Galileo. Every memory update is hash-anchored in <code>CoachRegistry</code>. Each coach is also registered on the live ERC-8004 IdentityRegistry.</p>
+      </div>
+      <div class="stack-cell r" data-d="3">
+        <span class="num">02</span>
+        <h3>0G Storage</h3>
+        <span class="tag">Privacy</span>
+        <p>Runs are AES-256-GCM encrypted with a key derived from the runner's wallet signature — never persisted — then stored on 0G Storage with the SDK's own encryption on top.</p>
+      </div>
+      <div class="stack-cell r" data-d="4">
+        <span class="num">03</span>
+        <h3>0G Compute</h3>
+        <span class="tag">Verifiable AI</span>
+        <p>All coach reasoning runs on 0G Compute, billed on-chain. Effort scores run on a TEE provider with per-response cryptographic attestation; every response carries an <code>x_0g_trace</code> proof of use.</p>
+      </div>
+      <div class="stack-cell r" data-d="4">
+        <span class="num">04</span>
+        <h3>ENS</h3>
+        <span class="tag">Identity &amp; agent-to-agent</span>
+        <p>Coaches don't just have names — they talk to each other. Each one is a live-resolved subname (<code>pedro.0run.eth</code>) and consults its peers via the <code>agent-endpoint[a2a]</code> record: EIP-191-signed requests verified against the caller's <code>agent-signer</code>, resolved fresh at request time. ENS is the entire auth layer — no API keys, no hard-coded peers.</p>
+      </div>
+      <div class="stack-cell r" data-d="5">
+        <span class="num">05</span>
+        <h3>World</h3>
+        <span class="tag">Human-backed agents</span>
+        <p>One human approval, verified on every consult. The owner authorizes the delegation once in World App — AgentBook registration at mint, QR, gasless relay. Every incoming A2A consult then checks on-chain that a real, unique human backs the calling agent (<code>lookupHuman</code>); no human, no answer. The anonymous humanId meters quotas per human, not per agent.</p>
+      </div>
+      <div class="stack-cell r" data-d="6">
+        <span class="num">06</span>
+        <h3>App &amp; infra</h3>
+        <span class="tag">Self-hosted</span>
+        <p>Next.js 16 with Privy embedded wallets (email login, no seed phrase), Postgres as a rebuildable index, Docker on a Hetzner VPS. Images build on the server — no secrets in repo or CI. Push to main → tests → deploy → health-checked rollback.</p>
+      </div>
+    </div>
+    <div class="foot"><span>0run — ETHGlobal Lisbon 2026</span><span class="pg">03 / 06</span></div>
+  </section>
+
+  <!-- ============ 04 · ARCHITECTURE ============ -->
+  <section class="slide" id="arch">
+    <span class="vertical-note" aria-hidden="true">0run / Architecture</span>
+    <div class="overline r"><span>High-level architecture</span></div>
+    <h2 class="r" data-d="2">Three prize tracks, <em>one architecture.</em></h2>
+
+    <div class="dlabel r" data-d="3"><span class="num">01</span><span>Run pipeline — 0G · Best AI Product</span></div>
+    <div class="diagram r" data-d="3">
+      <!-- client -->
+      <div class="dbox span3">
+        <span class="t">Runner · browser</span>
+        <h4>Privy embedded wallet</h4>
+        <p>Email login, no seed phrase.<br /><code>key = HKDF(wallet signature)</code><br />— never leaves the session.</p>
+      </div>
+      <div class="arrow span3"><span>GPX upload</span></div>
+      <!-- server -->
+      <div class="dbox span3">
+        <span class="t">0run server · Next.js 16</span>
+        <h4>Run pipeline</h4>
+        <p>GPX parser → pace, splits, elevation. AES-256-GCM envelope. Two-layer memory: <b>private layer</b> (user key) + <b>coaching profile</b> (service key) — lending a coach shares only the profile.</p>
+      </div>
+      <!-- arrows to 0G -->
+      <div class="arrow"><span>encrypted blob</span></div>
+      <div class="dbox accent">
+        <span class="t">0G Storage</span>
+        <h4>Encrypted runs &amp; memory</h4>
+      </div>
+      <div class="arrow"><span>memory rootHash</span></div>
+      <div class="dbox accent">
+        <span class="t">0G Chain</span>
+        <h4>OrunAgentNFT · CoachRegistry</h4>
+        <p>ERC-7857 iNFT mint · memory rootHash anchored per run · ERC-8004 registered</p>
+      </div>
+      <div class="arrow"><span>stats + history<br />never raw GPX</span></div>
+      <div class="dbox accent">
+        <span class="t">0G Compute</span>
+        <h4>Attested inference</h4>
+        <p>TEE-verified score · <code>x_0g_trace</code></p>
+      </div>
+    </div>
+
+    <div class="dlabel r" data-d="4"><span class="num">02</span><span>Agent-to-agent consult — ENS × World</span></div>
+    <div class="diagram r" data-d="4">
+      <div class="dbox">
+        <span class="t">Coach · pedro.0run.eth</span>
+        <h4>Asks a peer</h4>
+        <p>Wants a second opinion on a run — knows the colleague only <b>by ENS name</b>.</p>
+      </div>
+      <div class="arrow"><span>resolve<br />live</span></div>
+      <div class="dbox">
+        <span class="t">ENS · Sepolia — the auth layer</span>
+        <h4>Name → endpoint + signer</h4>
+        <p><code>agent-endpoint[a2a]</code> says where to call, <code>agent-signer</code> says who may sign — ENSIP-26 records, resolved at request time, nothing hard-coded.</p>
+      </div>
+      <div class="arrow"><span>EIP-191<br />signed consult</span></div>
+      <div class="dbox">
+        <span class="t">Coach · claudia.0run.eth</span>
+        <h4>Verifies, then answers</h4>
+        <p>Two questions, both on-chain: <code>agent-signer</code> says <b>who speaks</b>; <b>AgentBook</b> <code>lookupHuman</code> on the caller's ENS addr says <b>which human authorized it</b> — once, in World App. No human → 403. Quotas metered per humanId, not per agent.</p>
+      </div>
+    </div>
+
+    <div class="rail r" data-d="5" style="grid-template-columns: 1fr;">
+      <div class="dbox">
+        <p><b>Off-chain:</b> Postgres is a rebuildable index only — chain and storage remain the source of truth. Self-hosted on Hetzner with Docker; images build on the server, secrets never leave it.</p>
+      </div>
+    </div>
+    <div class="foot"><span>0run — ETHGlobal Lisbon 2026</span><span class="pg">04 / 06</span></div>
+  </section>
+
+  <!-- ============ 05 · TRACKS ============ -->
+  <section class="slide" id="tracks">
+    <span class="vertical-note" aria-hidden="true">0run / Tracks</span>
+    <div class="overline r"><span>Technology → track</span></div>
+    <h2 class="r" data-d="2">How each technology <em>is actually used.</em></h2>
+    <div class="tracks-grid">
+      <div class="track r" data-d="3">
+        <span class="prize">Track · Best AI Product</span>
+        <h3>0G</h3>
+        <ul>
+          <li>The product <b>is</b> the track: an AI agent whose identity, memory and reasoning all live on 0G.</li>
+          <li>Chain — coach minted as ERC-7857 iNFT, memory trail anchored per run, ERC-8004 registered.</li>
+          <li>Storage — every run encrypted client-key-first, merkle root computed locally.</li>
+          <li>Compute — all inference on-chain-billed; effort score TEE-attested, not asserted.</li>
+          <li>0G DA deliberately unused — it serves rollups, not this product.</li>
+        </ul>
+      </div>
+      <div class="track r" data-d="4">
+        <span class="prize">Track · Agent identity</span>
+        <h3>ENS</h3>
+        <ul>
+          <li>Every coach is discoverable by name: <b>pedro.0run.eth</b>, resolved live on every render — nothing hard-coded.</li>
+          <li>ENSIP-26 records describe the agent and point to the exact iNFT: <b>chainId:contract:tokenId</b>.</li>
+          <li>ENS as the auth layer: agent-to-agent consults are verified against the caller's <b>agent-signer</b> record, resolved at request time.</li>
+        </ul>
+      </div>
+      <div class="track r" data-d="5">
+        <span class="prize">Track · AgentKit</span>
+        <h3>World</h3>
+        <ul>
+          <li>The human authorizes <b>once</b>: a World App approval registers the wallet on AgentBook — QR at mint, gasless relay, no CLI.</li>
+          <li>Every A2A consult verifies the delegation on-chain — <b>lookupHuman</b> on the caller's ENS addr. No human behind the agent, no answer.</li>
+          <li>The anonymous <b>humanId</b> meters quotas — per human, not per agent, so spinning up 50 agents multiplies nothing — and traces abuse to a person, not a throwaway wallet.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot"><span>0run — ETHGlobal Lisbon 2026</span><span class="pg">05 / 06</span></div>
+  </section>
+
+  <!-- ============ 06 · CLOSING ============ -->
+  <section class="slide dark" id="close">
+    <span class="vertical-note" aria-hidden="true">0run / Vol. 01 — Lisboa</span>
+    <div class="overline r"><span>Try it now</span></div>
+    <h2 class="r" data-d="2">Own your Coach.<br /><em>Own your runs.</em></h2>
+    <div class="links r" data-d="3">
+      <div><b>Live demo</b><span><a href="https://0run.fun" target="_blank" rel="noreferrer">0run.fun</a></span></div>
+      <div><b>Contracts</b><span>0G Galileo — chainscan-galileo.0g.ai</span></div>
+      <div><b>Identity</b><span><a href="https://sepolia.app.ens.domains/pedro.0run.eth" target="_blank" rel="noreferrer">pedro.0run.eth</a></span></div>
+      <div><b>Builder</b><span><a href="https://www.linkedin.com/in/ivan-sala/" target="_blank" rel="noreferrer">linkedin.com/in/ivan-sala</a></span></div>
+    </div>
+    <div class="foot"><span>Every number measured against the real network — never estimated</span><span class="pg">06 / 06</span></div>
+  </section>
+
+</main>
+
+<script>
+  // Rotating hero word — same promise as the site's typewriter: the coach and
+  // everything it is built out of belongs to the athlete.
+  (function () {
+    const WORDS = ["Coach", "Data", "Training", "Health"];
+    const el = document.getElementById("typed");
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return; // static "Coach" — the caret stays solid via CSS
+    let i = 0;
+    function erase() {
+      const t = el.textContent;
+      if (t.length) { el.textContent = t.slice(0, -1); setTimeout(erase, 55); }
+      else { i = (i + 1) % WORDS.length; type(); }
+    }
+    function type() {
+      const w = WORDS[i], t = el.textContent;
+      if (t.length < w.length) { el.textContent = w.slice(0, t.length + 1); setTimeout(type, 90); }
+      else setTimeout(erase, 2200);
+    }
+    setTimeout(erase, 2600);
+  })();
+
+  // Reveal + dots state.
+  (function () {
+    const slides = [...document.querySelectorAll(".slide")];
+    const dots = [...document.querySelectorAll("nav.dots a")];
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add("in");
+          const idx = slides.indexOf(e.target);
+          dots.forEach((d, j) => d.classList.toggle("active", j === idx));
+        }
+      });
+    }, { threshold: 0.55 });
+    slides.forEach((s) => io.observe(s));
+  })();
+
+  // Keyboard navigation: arrows / space / PageUp-Down.
+  (function () {
+    const slides = [...document.querySelectorAll(".slide")];
+    function current() {
+      const y = document.querySelector("main").scrollTop;
+      return Math.round(y / innerHeight);
+    }
+    addEventListener("keydown", (e) => {
+      const next = ["ArrowDown", "ArrowRight", "PageDown", " "].includes(e.key);
+      const prev = ["ArrowUp", "ArrowLeft", "PageUp"].includes(e.key);
+      if (!next && !prev) return;
+      e.preventDefault();
+      const target = slides[Math.min(slides.length - 1, Math.max(0, current() + (next ? 1 : -1)))];
+      target?.scrollIntoView({ behavior: "smooth" });
+    });
+  })();
+</script>
+</body>
+</html>
