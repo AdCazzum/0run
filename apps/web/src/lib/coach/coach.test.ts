@@ -39,4 +39,17 @@ describe("prompts", () => {
   it("ReportSchema valida il formato report", () => {
     expect(ReportSchema.parse({ headline: "h", analysis: "a", comparison: "c", advice: ["x"] }).advice).toEqual(["x"]);
   });
+  it("con uno score attestato, lo user prompt lo cita esplicitamente", () => {
+    const { memory } = initialMemory("K", "pacer");
+    const profile = buildProfile(appendRun(memory, run));
+    const msgs = buildReportMessages(profile, [run], { ...run }, { score: 4, verified: true });
+    expect(msgs[1].content).toContain("4/5");
+    expect(msgs[1].content).toContain("TEE-verified");
+  });
+  it("senza score, il prompt resta invariato (nessuna menzione di 'effort score')", () => {
+    const { memory } = initialMemory("K", "pacer");
+    const profile = buildProfile(appendRun(memory, run));
+    const msgs = buildReportMessages(profile, [run], { ...run });
+    expect(msgs[1].content).not.toContain("effort score");
+  });
 });

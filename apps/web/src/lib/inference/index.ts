@@ -43,13 +43,23 @@ export async function coachComplete(messages: ChatMsg[]): Promise<CoachCompletio
   }
 }
 
-export async function completeJson<T>(
+/**
+ * Robust-JSON engine: calls `complete`, validates the reply against `schema`,
+ * and on failure retries with a correction message appended to the convo.
+ * Parameterized by `complete` (rather than hardcoding `coachComplete`) so
+ * callers that must pin a specific inference path — e.g. `scoreRun` in
+ * `../coach/score.ts`, which needs the attested `direct` path regardless of
+ * `INFERENCE_PREFER` — reuse this exact retry/validation logic instead of
+ * duplicating it.
+ */
+export async function completeJsonWith<T>(
+  complete: (messages: ChatMsg[]) => Promise<CoachCompletion>,
   schema: ZodType<T>, messages: ChatMsg[], retries = 2,
 ): Promise<{ value: T; meta: CoachCompletion }> {
   let convo = [...messages];
   let lastErr = "";
   for (let i = 0; i <= retries; i++) {
-    const meta = await coachComplete(convo);
+    const meta = await complete(convo);
     try {
       return { value: extractJson(schema, meta.text), meta };
     } catch (e) {
@@ -59,4 +69,10 @@ export async function completeJson<T>(
     }
   }
   throw new Error(`completeJson: JSON invalido dopo ${retries + 1} tentativi (${lastErr})`);
+}
+
+export async function completeJson<T>(
+  schema: ZodType<T>, messages: ChatMsg[], retries = 2,
+): Promise<{ value: T; meta: CoachCompletion }> {
+  return completeJsonWith(coachComplete, schema, messages, retries);
 }

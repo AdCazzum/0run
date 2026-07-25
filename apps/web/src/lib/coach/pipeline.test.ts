@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CoachMemory } from "@0run/shared";
+import type { ScoreOutcome } from "./score";
 
 // --- db mock -----------------------------------------------------------
 // Captures every `runs` step/status write (stepLog) and every `coaches`
@@ -18,6 +19,7 @@ vi.mock("@/db", () => ({
         where: async () => {
           if (v.steps) stepLog.last = v.steps;
           if (v.status) stepLog.status = v.status;
+          if ("effortScore" in v || "scoreNote" in v || "scoreVerified" in v) stepLog.scoreWrite = v;
           if ("memoryCipher" in v || "memoryRoot" in v) coachUpdates.push(v);
         },
       }),
@@ -55,6 +57,17 @@ vi.mock("../inference", () => ({
   })),
 }));
 
+// scoreRun (attested effort score, TEE-verified "direct" path — see
+// ./score.ts) is mocked at the module boundary rather than exercised for
+// real: pipeline tests must not depend on live inference (DIRECT_PROVIDERS
+// is unset here), and scoreRun's own behaviour is unit-tested in
+// score.test.ts. Defaults to success; the "score fallita" test below
+// overrides this to the unavailable outcome.
+const scoreRunMock = vi.fn<() => Promise<ScoreOutcome>>(async () => ({
+  ok: true, score: 4, note: "sforzo alto", verified: true, model: "qwen2.5-omni-7b",
+}));
+vi.mock("./score", () => ({ scoreRun: scoreRunMock }));
+
 // persistMemory is the only thing mocked from ./memory: appendRun/buildProfile
 // are pure and exercised for real, but persistMemory needs SERVICE_ENC_KEY
 // (env, not set in test) to encrypt the profile layer — mocking it avoids
@@ -76,6 +89,10 @@ describe("processRun", () => {
     for (const k of Object.keys(stepLog)) delete stepLog[k];
     coachUpdates.length = 0;
     persistMemoryMock.mockClear();
+    scoreRunMock.mockClear();
+    scoreRunMock.mockResolvedValue({
+      ok: true as const, score: 4 as const, note: "sforzo alto", verified: true, model: "qwen2.5-omni-7b",
+    });
     coachRow = {
       id: 1, userId: 1, tokenId: "1", name: "K", personality: "coach",
       memoryRoot: "0xm", profileRoot: "0xp", mintTx: "0xmint",
@@ -110,6 +127,26 @@ describe("processRun", () => {
     expect(coachUpdate).toMatchObject({
       memoryRoot: "0xnewmem", profileRoot: "0xnewprof", memoryCipher: "fresh-cipher-envelope",
     });
+
+    // Attested effort score: computed BEFORE inference (so it can be cited in
+    // the report prompt) and persisted alongside it.
+    expect(scoreRunMock).toHaveBeenCalledTimes(1);
+    expect(stepLog.last.score).toMatchObject({ status: "done" });
+    expect(stepLog.scoreWrite).toMatchObject({ effortScore: 4, scoreNote: "sforzo alto", scoreVerified: "true" });
+  });
+
+  it("score non disponibile → NON fa fallire la corsa, inference completa comunque", async () => {
+    scoreRunMock.mockResolvedValue({ ok: false, error: "direct: tutti i provider falliti" });
+    const { processRun } = await import("./pipeline");
+
+    await processRun(1, 1, gpx, Buffer.alloc(32));
+
+    // The run as a whole still succeeds — the score is an enhancement, not a
+    // requirement — and inference (the report) still runs to completion.
+    expect(stepLog.status).toBe("done");
+    expect(stepLog.last.score).toMatchObject({ status: "error", detail: "direct: tutti i provider falliti" });
+    expect(stepLog.last.inference).toMatchObject({ status: "done" });
+    expect(stepLog.scoreWrite).toBeUndefined(); // no score fields persisted when unavailable
   });
 
   it("coaches.memoryCipher assente → fallback su downloadDecrypted (percorso re-sync)", async () => {

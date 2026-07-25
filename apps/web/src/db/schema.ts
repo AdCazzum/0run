@@ -1,7 +1,7 @@
 import { integer, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import type { RunStats } from "@0run/shared";
 
-export type RunStep = "encrypt" | "store_gpx" | "update_memory" | "registry_tx" | "inference";
+export type RunStep = "encrypt" | "store_gpx" | "update_memory" | "registry_tx" | "score" | "inference";
 export type StepState = { status: "pending" | "done" | "error"; detail?: string };
 
 export const users = pgTable("users", {
@@ -58,6 +58,15 @@ export const runs = pgTable("runs", {
   report: jsonb("report").$type<{ headline: string; analysis: string; comparison: string; advice: string[] }>(),
   verifiedTee: text("verified_tee"), // "true" | "false" | "unavailable"
   model: text("model"),
+  // Attested effort score (1-5), produced on the TEE-verified 0G Compute
+  // "direct" path — separate from the narrative report above, which runs on
+  // the router. See apps/web/src/lib/coach/score.ts and
+  // docs/0g-reality-check.md ("Router contro Direct") for why the two are
+  // split. All three are nullable: the direct path is a single provider on a
+  // testnet and can be unavailable — a missing score never fails the run.
+  effortScore: integer("effort_score"),
+  scoreNote: text("score_note"),
+  scoreVerified: text("score_verified"), // "true" | "false" | "unavailable"
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

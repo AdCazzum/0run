@@ -35,6 +35,17 @@ La rete Direct espone **un solo modello chat** (verificato con `broker.inference
 
 Nota di implementazione costata tempo: la build **ESM dell'SDK Compute è rotta** (`does not provide an export named 'C'` su 0.9.0). Va caricata la build CommonJS via `createRequire`, altrimenti abilitare il path Direct fallisce a runtime e ricade silenziosamente sul router — cioè sembra funzionare finché il router ha credito.
 
+### Lo split: report sul router, effort score sul direct
+
+La tabella sopra è una scelta secca solo se si tratta il coaching come un'unica chiamata. Non lo è: il prodotto separa esplicitamente due output.
+
+- **Il report narrativo** (headline, analisi, confronto, consigli) resta sul **router / `glm-5.2`**: usa la memoria, resta in personaggio, è il prodotto — comportamento invariato.
+- **L'effort score 1-5** (`apps/web/src/lib/coach/score.ts`) va SEMPRE sul **direct / `qwen2.5-omni-7b`**, chiamando `directComplete` esplicitamente e mai `coachComplete` — quindi indipendentemente da `INFERENCE_PREFER`. Un numero singolo derivato da statistiche già aggregate è esattamente ciò che un modello 7B sa fare bene, ed è anche l'unica parte che qualcuno potrebbe contestare o falsificare: è lì che la provenienza tamper-proof conta davvero. Lo score viene poi iniettato nel prompt del report (`buildReportMessages`), così il modello grande lo cita invece di ricalcolarlo.
+
+**Cosa dimostra l'attestazione, e cosa no.** `processResponse → true` dimostra che *quella risposta* è stata prodotta da *quel modello* dentro una TEE, sui dati sottomessi in quella richiesta. Non dimostra che il GPX sia genuino, né che le statistiche aggregate passate nel prompt siano vere — l'attestazione copre l'inferenza, non la provenienza dei dati a monte. Nessuna copia del prodotto deve implicare il contrario.
+
+Lo score è pensato come **effort/intensità relativo alla storia dell'atleta stesso** (1 = recupero, 5 = massimale), mai una scala assoluta: confrontare corridori diversi su una scala fissa non avrebbe senso, quindi il prompt àncora esplicitamente il modello al trend di passo recente di quello stesso atleta. Se il path direct fallisce (singolo provider, testnet, cade spesso — vedi tabella sopra), `scoreRun` non lancia mai e non inventa un numero: ritorna un esito `{ ok: false }` che la pipeline marca come step `error` senza far fallire la corsa — il report resta il prodotto, lo score è un arricchimento.
+
 ## Storage — l'upload funziona, la lettura no (nel tempo di una demo)
 
 Questo è il vincolo che ha cambiato l'architettura.

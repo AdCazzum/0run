@@ -10,8 +10,9 @@ import { toBytes32, updateRegistry } from "../zerog/contracts";
 import { completeJson } from "../inference";
 import { appendRun, buildProfile, persistMemory } from "./memory";
 import { buildReportMessages, ReportSchema } from "./prompts";
+import { scoreRun } from "./score";
 
-const ALL_STEPS: RunStep[] = ["encrypt", "store_gpx", "update_memory", "registry_tx", "inference"];
+const ALL_STEPS: RunStep[] = ["encrypt", "store_gpx", "update_memory", "registry_tx", "score", "inference"];
 export const initialSteps = (): Record<RunStep, StepState> =>
   Object.fromEntries(ALL_STEPS.map((s) => [s, { status: "pending" }])) as Record<RunStep, StepState>;
 
@@ -110,10 +111,36 @@ export async function processRun(runId: number, userId: number, gpxXml: string, 
     );
     await mark("registry_tx", { status: "done", detail: regTx }, { registryTx: regTx });
 
-    // 5. inference
-    currentStep = "inference";
+    // 5. attested effort score, on the TEE-verified 0G Compute "direct" path
+    // (see ./score.ts and docs/0g-reality-check.md, "Router contro Direct").
+    // Runs BEFORE inference so a successful score can be cited by the
+    // narrative report below. This step must NEVER fail the run: scoreRun
+    // itself never throws, but the step is still wrapped defensively and,
+    // on failure, is marked "error" with a detail while the pipeline moves
+    // on to inference regardless — the report is the product, the score is
+    // an enhancement.
+    currentStep = "score";
     const profile = buildProfile(updated);
-    const { value: report, meta } = await completeJson(ReportSchema, buildReportMessages(profile, memory.privateLayer.runs, stats));
+    const scoreOutcome = await scoreRun(profile, memory.privateLayer.runs, stats);
+    if (scoreOutcome.ok) {
+      await mark("score", { status: "done", detail: `${scoreOutcome.score}/5` }, {
+        effortScore: scoreOutcome.score,
+        scoreNote: scoreOutcome.note,
+        scoreVerified: scoreOutcome.verified === null ? "unavailable" : String(scoreOutcome.verified),
+      });
+    } else {
+      await mark("score", { status: "error", detail: scoreOutcome.error });
+    }
+
+    // 6. inference (narrative report, router path)
+    currentStep = "inference";
+    const { value: report, meta } = await completeJson(
+      ReportSchema,
+      buildReportMessages(
+        profile, memory.privateLayer.runs, stats,
+        scoreOutcome.ok ? { score: scoreOutcome.score, verified: scoreOutcome.verified } : null,
+      ),
+    );
     await mark("inference", { status: "done" }, {
       report, model: meta.model,
       verifiedTee: meta.verified === null ? "unavailable" : String(meta.verified),

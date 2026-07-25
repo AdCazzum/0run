@@ -1,12 +1,13 @@
 import type { RunStep, StepState } from "./types";
 
-const ORDER: RunStep[] = ["encrypt", "store_gpx", "update_memory", "registry_tx", "inference"];
+const ORDER: RunStep[] = ["encrypt", "store_gpx", "update_memory", "registry_tx", "score", "inference"];
 
 const LABELS: Record<RunStep, string> = {
   encrypt: "Encrypt",
   store_gpx: "Store on 0G",
   update_memory: "Update memory",
   registry_tx: "Anchor on-chain",
+  score: "Attested effort score",
   inference: "Coach report",
 };
 
@@ -21,7 +22,7 @@ function Dot({ status }: { status: StepState["status"] }) {
 }
 
 /**
- * Vertical list of the 5 pipeline phases from `runs.steps`. Real inference is
+ * Vertical list of the 6 pipeline phases from `runs.steps`. Real inference is
  * ~20s and real storage propagation takes minutes (docs/0g-reality-check.md),
  * so this is what the UI shows instead of a bare spinner while a run is
  * `processing` — the caller polls GET /api/runs/:id and re-renders this with

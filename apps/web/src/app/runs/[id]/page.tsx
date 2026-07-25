@@ -92,6 +92,8 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
               model={run.model}
               registryTx={run.registryTx}
               gpxRoot={run.gpxRoot}
+              effortScore={run.effortScore}
+              scoreVerified={run.scoreVerified}
             />
           ) : (
             <Label>the report will appear here once the coach has answered</Label>

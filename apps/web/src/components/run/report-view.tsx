@@ -2,8 +2,16 @@ import { explorerTx, storageExplorerRoot } from "@0run/shared";
 
 type Report = { headline: string; analysis: string; comparison: string; advice: string[] };
 
-export function ReportView({ report, verifiedTee, model, registryTx, gpxRoot }: {
+export function ReportView({
+  report, verifiedTee, model, registryTx, gpxRoot, effortScore = null, scoreVerified = null,
+}: {
   report: Report; verifiedTee: string | null; model: string | null; registryTx: string | null; gpxRoot: string | null;
+  // Attested effort score: a SEPARATE attestation from `verifiedTee` above —
+  // it covers only the score (../lib/coach/score.ts), computed on the
+  // TEE-verified "direct" 0G Compute path, independently of which path
+  // produced the narrative report. Optional/nullable: that path can be
+  // unavailable, which is not an error state for the run itself.
+  effortScore?: number | null; scoreVerified?: string | null;
 }) {
   return (
     <article className="max-w-xl">
@@ -28,6 +36,11 @@ export function ReportView({ report, verifiedTee, model, registryTx, gpxRoot }: 
         {verifiedTee === "true"
           ? <span className="text-orange">● TEE verified · {model}</span>
           : <span className="text-ocean">attestation not available · {model}</span>}
+        {effortScore != null && (
+          scoreVerified === "true"
+            ? <span className="text-orange">● effort {effortScore}/5 · TEE verified</span>
+            : <span className="text-ocean">effort {effortScore}/5 · attestation not available</span>
+        )}
         {registryTx && <a className="text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline" href={explorerTx(registryTx)} target="_blank" rel="noopener noreferrer">memory tx ↗</a>}
         {gpxRoot && <a className="text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline" href={storageExplorerRoot(gpxRoot)} target="_blank" rel="noopener noreferrer">encrypted gpx ↗</a>}
       </div>

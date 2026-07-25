@@ -33,6 +33,22 @@ export function RunCard({ run }: { run: RunRow }) {
         {run.verifiedTee === "true" && (
           <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-orange">● TEE</span>
         )}
+        {run.effortScore != null && (
+          // Attested effort score (../lib/coach/score.ts): a SEPARATE
+          // attestation from the report badge above — it covers only the
+          // score, computed on the TEE-verified "direct" 0G Compute path.
+          // Orange (a verification claim) only when scoreVerified is
+          // literally "true"; any other state (including "unavailable")
+          // shows the number with no attestation wording at all, per the
+          // design system rule that orange = a claim that must hold.
+          <span
+            className={`font-sans text-[10px] uppercase tracking-[0.25em] ${
+              run.scoreVerified === "true" ? "text-orange" : "text-ocean"
+            }`}
+          >
+            effort {run.effortScore}/5{run.scoreVerified === "true" ? " · TEE verified" : ""}
+          </span>
+        )}
       </div>
 
       {run.status === "processing" ? (
