@@ -5,6 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // lib/coach/memory's persistMemory), so it needs a real-shaped dummy key.
 process.env.SERVICE_ENC_KEY = "ab".repeat(32);
 
+// Il gate "un umano = un coach" chiama AgentBook su World Chain: mockato, altrimenti
+// ogni test farebbe una RPC reale e il route risponderebbe 503.
+vi.mock("@/lib/world/agentbook", () => ({
+  lookupHumanId: vi.fn(async () => ({ humanId: "human_demo" })),
+}));
+
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn(async () => ({ userId: 1, wallet: "0x" + "22".repeat(20), privyDid: "did:x" })) }));
 vi.mock("@/lib/zerog/contracts", async (orig) => ({
   ...(await orig()) as object, // keep the real (pure, no env dependency) toBytes32
@@ -38,6 +44,11 @@ vi.mock("@/db", () => ({
         onConflictDoNothing: () => ({
           returning: async () => {
             if (dbState.coaches.has(v.userId)) return [];
+            // Il vincolo UNIQUE(human_id) in Postgres lancia una violazione, non
+            // restituisce zero righe: il route deve tradurla in un 409 esplicito.
+            if (v.humanId && [...dbState.coaches.values()].some((c: any) => c.humanId === v.humanId)) {
+              throw Object.assign(new Error('duplicate key value violates unique constraint "coaches_human_id_unique"'), { code: "23505", constraint: "coaches_human_id_unique" });
+            }
             // reservedAt is filled by the column default in Postgres, so the mock
             // must supply it too — the conflict path reads it to age the reservation.
             const row = { id: dbState.coaches.size + 1, reservedAt: new Date(), ...v };
@@ -154,6 +165,76 @@ describe("POST /api/coach/mint", () => {
     const res = await POST(req());
     expect(res.status).toBe(409);
     expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
+  });
+
+  // Il gate: possedere un agente richiede un umano unico verificato; consultare i
+  // coach altrui no. Il vincolo sta sulla proprietà, non sull'accesso.
+  it("wallet senza human backing → 403 e NESSUNA reservation creata", async () => {
+    const { lookupHumanId } = await import("@/lib/world/agentbook");
+    vi.mocked(lookupHumanId).mockResolvedValueOnce({ humanId: null });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.reason).toBe("human_backing_required");
+    expect(body.howTo).toContain("agentkit-cli register");
+    expect(dbState.coaches.size).toBe(0);
+    expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
+  });
+
+  it("AgentBook irraggiungibile → 503: 'non lo so' non diventa né un sì né un no", async () => {
+    const { lookupHumanId } = await import("@/lib/world/agentbook");
+    vi.mocked(lookupHumanId).mockResolvedValueOnce({ humanId: null, error: "RPC down" });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(503);
+    expect(dbState.coaches.size).toBe(0);
+    expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
+  });
+
+  it("stesso humanId da un ALTRO account → 409: un umano, un solo coach", async () => {
+    dbState.coaches.set(99, {
+      id: 1, userId: 99, tokenId: "7", name: "altro", personality: "coach",
+      memoryRoot: "0xm", profileRoot: "0xp", mintTx: "0xt", humanId: "human_demo", reservedAt: new Date(),
+    });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(409);
+    expect((await res.json()).reason).toBe("human_already_owns_a_coach");
+    expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
+  });
+
+  it("REQUIRE_HUMAN_BACKED_MINT=0 → valvola d'emergenza: minta anche senza human backing", async () => {
+    const saved = process.env.REQUIRE_HUMAN_BACKED_MINT;
+    process.env.REQUIRE_HUMAN_BACKED_MINT = "0";
+    const { lookupHumanId } = await import("@/lib/world/agentbook");
+    vi.mocked(lookupHumanId).mockResolvedValueOnce({ humanId: null });
+    try {
+      const { POST } = await import("./route");
+      expect((await POST(req())).status).toBe(200);
+      expect(dbState.coaches.get(1).humanId).toBeNull();
+    } finally {
+      process.env.REQUIRE_HUMAN_BACKED_MINT = saved;
+    }
+  });
+
+  it("valvola aperta + AgentBook giù → minta comunque (altrimenti la valvola non serve a nulla)", async () => {
+    const saved = process.env.REQUIRE_HUMAN_BACKED_MINT;
+    process.env.REQUIRE_HUMAN_BACKED_MINT = "0";
+    const { lookupHumanId } = await import("@/lib/world/agentbook");
+    vi.mocked(lookupHumanId).mockResolvedValueOnce({ humanId: null, error: "RPC down" });
+    try {
+      const { POST } = await import("./route");
+      expect((await POST(req())).status).toBe(200);
+    } finally {
+      process.env.REQUIRE_HUMAN_BACKED_MINT = saved;
+    }
+  });
+
+  it("mint riuscito → l'humanId finisce sulla riga del coach", async () => {
+    const { POST } = await import("./route");
+    expect((await POST(req())).status).toBe(200);
+    expect(dbState.coaches.get(1).humanId).toBe("human_demo");
   });
 
   it("SERVICE_ENC_KEY malformata → 500 e NESSUNA reservation creata (altrimenti lockout permanente)", async () => {

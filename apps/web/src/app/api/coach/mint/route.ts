@@ -5,6 +5,7 @@ import { PersonalitySchema, initialMemory, explorerTx } from "@0run/shared";
 import { requireUser } from "@/lib/auth";
 import { encryptJson } from "@/lib/crypto/aes";
 import { serviceKey } from "@/lib/crypto/keys";
+import { lookupHumanId } from "@/lib/world/agentbook";
 import { prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { mintCoachOnChain, updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
 import { registerAgent } from "@/lib/erc8004/register";
@@ -95,6 +96,45 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e.message ?? "configurazione server non valida" }, { status: 500 });
   }
 
+  // Owning an agent requires proving you are a unique human; consulting other
+  // people's coaches does not. The reason is concrete rather than moral: minting
+  // is free and unlimited and WE pay the gas, so without this one person could
+  // mint a hundred agents, flood the public directory and drain the funder.
+  // Resolved BEFORE the reservation, like every other thing that can refuse the
+  // request — a refusal after reserving is how you strand a row and lock someone
+  // out permanently, which has already happened twice in this route's history.
+  const enforceHumanBacking = process.env.REQUIRE_HUMAN_BACKED_MINT !== "0";
+  const lookup = await lookupHumanId(user.wallet);
+  if (lookup.error && enforceHumanBacking) {
+    // "Unknown" is neither a yes nor a no. Saying "you are not human" because a
+    // World Chain RPC blinked would be a lie, and letting it through would make
+    // the gate decorative. Note this only blocks while the gate is ENFORCED: with
+    // the valve open, an unreachable World Chain must not be able to stop minting
+    // — that is the entire purpose of the valve.
+    return NextResponse.json(
+      { error: "impossibile verificare ora il legame con un umano verificato, riprova", detail: lookup.error },
+      { status: 503 },
+    );
+  }
+  if (lookup.error) {
+    console.warn("mint: human-backing lookup unavailable, proceeding because the gate is not enforced", lookup.error);
+  }
+  if (enforceHumanBacking && !lookup.humanId) {
+    return NextResponse.json(
+      {
+        error: "per possedere un coach serve dimostrare di essere una persona reale e unica",
+        reason: "human_backing_required",
+        wallet: user.wallet,
+        // The registration is a human action a service cannot perform for you:
+        // the CLI prints a link to scan in World App and a relay submits it.
+        howTo: `npx @worldcoin/agentkit-cli register ${user.wallet}`,
+        note: "consultare i coach di altri resta libero: il vincolo è sulla proprietà di un agente, non sull'accesso",
+      },
+      { status: 403 },
+    );
+  }
+  const humanId = lookup.humanId;
+
   try {
     // Reserve BEFORE minting on-chain. coaches.userId is unique, so this
     // INSERT ... ON CONFLICT DO NOTHING is the atomic gate: of any number of
@@ -103,15 +143,38 @@ export async function POST(req: Request) {
     // strings in the not-null tokenId/mintTx/memoryRoot/profileRoot columns
     // are the placeholder: a coaches row with an empty tokenId means
     // "reserved, mint not yet confirmed" — never "minted with an empty id".
-    const insertReservation = () =>
-      db
-        .insert(coaches)
-        .values({ userId: user.userId, tokenId: "", name, personality, memoryRoot: "", profileRoot: "", mintTx: "" })
-        .onConflictDoNothing({ target: coaches.userId })
-        .returning({ id: coaches.id });
+    // A conflict on coaches.userId means "this account already has one" and is
+    // handled below. A conflict on coaches.humanId means "this PERSON already has
+    // one, under some other account" — that is the whole point of the gate, and
+    // Postgres raises it as a unique violation rather than returning no rows, so
+    // it has to be caught here or it surfaces as an opaque 500.
+    type Reservation = { rows: { id: number }[]; humanConflict?: false } | { rows: []; humanConflict: true };
+    const insertReservation = async (): Promise<Reservation> => {
+      try {
+        const rows = await db
+          .insert(coaches)
+          .values({ userId: user.userId, tokenId: "", name, personality, memoryRoot: "", profileRoot: "", mintTx: "", humanId })
+          .onConflictDoNothing({ target: coaches.userId })
+          .returning({ id: coaches.id });
+        return { rows };
+      } catch (e: any) {
+        const signature = `${e?.code ?? ""} ${e?.constraint ?? ""} ${e?.message ?? ""}`;
+        if (signature.includes("human_id")) return { rows: [], humanConflict: true };
+        throw e;
+      }
+    };
+    const humanAlreadyOwnsOne = () =>
+      NextResponse.json(
+        {
+          error: "questa persona possiede già un coach: un umano verificato, un solo agente",
+          reason: "human_already_owns_a_coach",
+        },
+        { status: 409 },
+      );
 
     let reserved = await insertReservation();
-    if (reserved.length === 0) {
+    if (reserved.humanConflict) return humanAlreadyOwnsOne();
+    if (reserved.rows.length === 0) {
       const [existing] = await db.select().from(coaches).where(eq(coaches.userId, user.userId));
       const isUnconfirmed = !!existing && existing.tokenId === "" && existing.mintTx === "";
       const ageMs = existing ? Date.now() - existing.reservedAt.getTime() : 0;
@@ -126,9 +189,10 @@ export async function POST(req: Request) {
         console.warn(`mint: reclaiming stale reservation for user ${user.userId} (age ${ageMs}ms)`);
         await db.delete(coaches).where(and(eq(coaches.userId, user.userId), eq(coaches.tokenId, "")));
         reserved = await insertReservation();
+        if (reserved.humanConflict) return humanAlreadyOwnsOne();
       }
 
-      if (reserved.length === 0) {
+      if (reserved.rows.length === 0) {
         // Three states used to answer with the same message, which hid the real
         // situation from the user and from anyone debugging through the API.
         if (isUnconfirmed) {

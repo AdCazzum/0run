@@ -38,6 +38,11 @@ export const coaches = pgTable("coaches", {
   // mid-flight (crash, restart, misconfiguration), so the next attempt may
   // reclaim it instead of the user being locked out of minting forever.
   reservedAt: timestamp("reserved_at").defaultNow().notNull(),
+  // The anonymous World AgentBook identifier of the human behind this agent.
+  // UNIQUE is the "one human = one coach" rule itself: enforced by Postgres, so
+  // two concurrent mints from two accounts of the same person cannot both win it
+  // the way application-level checks would let them.
+  humanId: text("human_id").unique(),
   // ERC-8004 IdentityRegistry agentId (see lib/erc8004/register.ts), filled
   // in by a best-effort background step after the mint. Nullable: rows
   // minted before this column existed predate it, and a coach the ERC-8004
