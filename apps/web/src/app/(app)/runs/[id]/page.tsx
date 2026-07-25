@@ -4,6 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { getAccessToken, usePrivy } from "@privy-io/react-auth";
 import { Chat } from "@/components/run/chat";
+import { CoachChase } from "@/components/run/coach-chase";
 import { PipelineSteps } from "@/components/run/pipeline-steps";
 import { ReportView } from "@/components/run/report-view";
 import type { RunRow } from "@/components/run/types";
@@ -99,6 +100,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       {run.status === "processing" && !stalled && (
         <section className="mt-6 border-t border-navy pt-8">
           <Label>The coach is working</Label>
+          <div className="mt-6"><CoachChase /></div>
           <div className="mt-8 max-w-md"><PipelineSteps steps={run.steps} /></div>
         </section>
       )}
