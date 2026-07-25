@@ -54,6 +54,8 @@ vi.mock("@/lib/erc8004/register", () => ({
 vi.mock("@/lib/ens/subname", async (orig) => ({
   ...(await orig()) as object,
   assignSubname: vi.fn(async () => ({ error: "not exercised in this test" })),
+  // Writes a text record on Sepolia for real if left unmocked.
+  setTextRecord: vi.fn(async () => ({ name: "kilian.0run.eth", txHash: "0xsettext" })),
 }));
 
 // Reservation semantics under test: a coaches row keyed by userId, with an
@@ -129,7 +131,7 @@ vi.mock("@/db", () => ({
 
 import { mintCoachOnChain, updateRegistry } from "@/lib/zerog/contracts";
 import { registerAgent } from "@/lib/erc8004/register";
-import { assignSubname } from "@/lib/ens/subname";
+import { assignSubname, setTextRecord } from "@/lib/ens/subname";
 import { _setDepsForTest } from "@/lib/zerog/storage";
 
 function req(body: any = { name: "Kilian", personality: "coach", userKeyHex: "aa".repeat(32) }) {
@@ -145,6 +147,7 @@ describe("POST /api/coach/mint", () => {
     vi.mocked(updateRegistry).mockReset().mockImplementation(async () => "0xreg");
     vi.mocked(registerAgent).mockReset().mockImplementation(async () => ({ error: "not exercised in this test" }));
     vi.mocked(assignSubname).mockReset().mockImplementation(async () => ({ error: "not exercised in this test" }));
+    vi.mocked(setTextRecord).mockReset().mockImplementation(async () => ({ name: "kilian.0run.eth", txHash: "0xsettext" }));
     // Root hashes are computed locally (fast, no network) — this is exactly
     // the fix under test, so the mock doUpload is never expected to be
     // awaited by the request/response cycle itself (only by the
@@ -496,6 +499,26 @@ describe("POST /api/coach/mint", () => {
     expect(dbState.coaches.get(1)?.agentId).toBe("148");
   });
 
+  it("quando ENS e ERC-8004 sono entrambi arrivati, 0run:erc8004 viene pubblicato UNA volta", async () => {
+    // I due passi sono indipendenti e l'ordine non è garantito: chi arriva
+    // secondo scrive il record, e non si scrive due volte.
+    vi.mocked(assignSubname).mockImplementation(async () => ({ name: "kilian.0run.eth", txHash: "0xenstx" }));
+    vi.mocked(registerAgent).mockImplementation(async () => ({ agentId: "148", txHash: "0x8004tx" }));
+    const { POST } = await import("./route");
+    expect((await POST(req())).status).toBe(200);
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(vi.mocked(setTextRecord)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(setTextRecord)).toHaveBeenCalledWith("kilian.0run.eth", "0run:erc8004", "148");
+  });
+
+  it("solo ENS (ERC-8004 fallito) → nessun record 0run:erc8004 inventato", async () => {
+    vi.mocked(assignSubname).mockImplementation(async () => ({ name: "kilian.0run.eth", txHash: "0xenstx" }));
+    const { POST } = await import("./route");
+    expect((await POST(req())).status).toBe(200);
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(vi.mocked(setTextRecord)).not.toHaveBeenCalled();
+  });
+
   it("assegnazione ENS fallisce in background → il mint resta 200, nessun ensName scritto", async () => {
     vi.mocked(assignSubname).mockImplementation(async () => ({ error: "sepolia rpc down" }));
     const { POST } = await import("./route");
@@ -522,8 +545,12 @@ describe("POST /api/coach/mint", () => {
       {
         tokenId: "1",
         endpoint: "https://0run.fun/coach/1",
-        // The avatar record is what makes the portrait show up in ENS clients.
+        // The avatar record is what makes the portrait show up in ENS clients,
+        // and description/url are the ENSIP-5 keys those clients actually read.
         avatar: "https://0run.fun/api/coach/1/avatar",
+        url: "https://0run.fun/coach/1",
+        description: expect.stringContaining("Kilian"),
+        personality: "coach",
       },
     );
 

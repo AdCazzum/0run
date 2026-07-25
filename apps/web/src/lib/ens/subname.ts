@@ -3,7 +3,17 @@ import { sepolia } from "viem/chains";
 import { ethers } from "ethers";
 import { GALILEO } from "@0run/shared";
 
-export type AssignSubnameRecords = { tokenId: string; endpoint: string; avatar: string };
+export type AssignSubnameRecords = {
+  tokenId: string;
+  endpoint: string;
+  avatar: string;
+  /** ENSIP-5 `description`: one line, for the clients that show it. */
+  description: string;
+  /** ENSIP-5 `url`: same destination as agent-endpoint[web], under the key every client reads. */
+  url: string;
+  /** `0run:personality`: pacer | coach | drill_sergeant. */
+  personality: string;
+};
 type Result = { name: string; txHash: string } | { error: string };
 
 /**
@@ -125,9 +135,54 @@ export async function assignSubname(label: string, owner: string, records: Assig
       // though the portrait is generated a moment later by another background
       // step; until then it simply 404s, and it starts working on its own.
       iface.encodeFunctionData("setText", [node, "avatar", records.avatar]),
+      // `description` and `url` are the ENSIP-5 keys every ENS client already
+      // renders. Without them the coach shows up in app.ens.domains with a face
+      // and no idea who it is: `agent-context` and `agent-endpoint[web]` carry
+      // the same meaning, but only software that knows ENSIP-26 reads them.
+      iface.encodeFunctionData("setText", [node, "description", records.description]),
+      iface.encodeFunctionData("setText", [node, "url", records.url]),
+      // Namespaced, because it is ours: it lets anyone — including a directory
+      // that is not ours — filter coaches by how they coach without asking our
+      // database anything.
+      iface.encodeFunctionData("setText", [node, "0run:personality", records.personality]),
     ];
 
     const tx = await resolver.multicall(calls);
+    const receipt = await tx.wait();
+    return { name: fullName, txHash: receipt.hash };
+  } catch (e: any) {
+    return { error: e.message ?? String(e) };
+  }
+}
+
+/**
+ * Writes one text record on an existing name.
+ *
+ * Exists for `0run:erc8004`, the agent's id in the ERC-8004 IdentityRegistry.
+ * It cannot go in the multicall above: the ENS assignment and the ERC-8004
+ * registration are two independent background steps after a mint, and either
+ * can land first — so whichever finishes second writes this record, once both
+ * halves are known. Publishing it completes the chain anyone can verify from
+ * the name alone: ENS name → iNFT on 0G Galileo → entry in the registry.
+ *
+ * Same receipt discipline as assignSubname: never throws.
+ */
+export async function setTextRecord(fullName: string, key: string, value: string): Promise<Result> {
+  try {
+    const pk = process.env.ENS_OWNER_PRIVATE_KEY;
+    const rpcUrl = process.env.ENS_SEPOLIA_RPC;
+    const parent = process.env.ENS_PARENT_NAME;
+    if (!parent || !pk || !rpcUrl) {
+      return { error: "configurazione ENS incompleta (ENS_PARENT_NAME/ENS_OWNER_PRIVATE_KEY/ENS_SEPOLIA_RPC)" };
+    }
+    // The resolver is the parent's, looked up live — a subname has no separate
+    // entry to read (see the long note above).
+    const resolverAddress = await client().getEnsResolver({ name: parent });
+    if (!resolverAddress) return { error: `nessun resolver trovato per ${parent}` };
+
+    const wallet = new ethers.Wallet(pk, new ethers.JsonRpcProvider(rpcUrl));
+    const resolver = new ethers.Contract(resolverAddress, RESOLVER_ABI, wallet);
+    const tx = await resolver.setText(namehash(fullName), key, value);
     const receipt = await tx.wait();
     return { name: fullName, txHash: receipt.hash };
   } catch (e: any) {

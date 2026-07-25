@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { z } from "zod";
-import { PersonalitySchema, initialMemory, explorerTx } from "@0run/shared";
+import { PERSONALITY_STYLE, PersonalitySchema, initialMemory, explorerTx, type Personality } from "@0run/shared";
 import { requireUser } from "@/lib/auth";
 import { encryptJson } from "@/lib/crypto/aes";
 import { serviceKey } from "@/lib/crypto/keys";
@@ -9,7 +9,7 @@ import { checkHumanBacking } from "@/lib/world/gate";
 import { prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { mintCoachOnChain, updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
 import { registerAgent } from "@/lib/erc8004/register";
-import { assignSubname, slugifyLabel } from "@/lib/ens/subname";
+import { assignSubname, setTextRecord, slugifyLabel } from "@/lib/ens/subname";
 import { buildAvatarPrompt, generateAvatar } from "@/lib/avatar/generate";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
@@ -59,6 +59,43 @@ function uniqueViolation(e: unknown): string | null {
     if (cur.code === "23505") return typeof cur.constraint === "string" ? cur.constraint : "";
   }
   return null;
+}
+
+/** One line about the coach, for the ENSIP-5 `description` record. */
+function coachDescription(name: string, personality: Personality): string {
+  return `${name} — ${PERSONALITY_STYLE[personality]} An AI running coach owned by one athlete on 0run; its memory is encrypted and only that athlete can read it.`;
+}
+
+/**
+ * Publishes `0run:erc8004` once BOTH halves exist.
+ *
+ * The ENS assignment and the ERC-8004 registration are independent background
+ * steps and either can land first, so both call this and whichever arrives
+ * second does the write. Publishing it completes the chain a stranger can walk
+ * from the name alone: ENS name → iNFT on 0G Galileo → entry in the registry.
+ */
+const publishedAgentIdFor = new Set<string>();
+async function publishAgentIdRecord(userId: number): Promise<void> {
+  try {
+    const [row] = await db
+      .select({ ensName: coaches.ensName, agentId: coaches.agentId })
+      .from(coaches)
+      .where(eq(coaches.userId, userId));
+    if (!row?.ensName || !row.agentId) return; // the other half has not landed yet
+    // Both steps can see both halves at once; write the record once.
+    if (publishedAgentIdFor.has(row.ensName)) return;
+    publishedAgentIdFor.add(row.ensName);
+
+    const result = await setTextRecord(row.ensName, "0run:erc8004", row.agentId);
+    if ("error" in result) {
+      publishedAgentIdFor.delete(row.ensName); // let a later attempt retry
+      console.error("mint: publishing 0run:erc8004 failed", result.error);
+      return;
+    }
+    console.log("mint: 0run:erc8004 published", row.ensName, row.agentId, result.txHash);
+  } catch (e) {
+    console.error("mint: publishing 0run:erc8004 crashed", e);
+  }
 }
 
 type MintOutcome =
@@ -314,6 +351,7 @@ export async function POST(req: Request) {
           }
           console.log("mint: background ERC-8004 registration ok", result.agentId, result.txHash);
           await db.update(coaches).set({ agentId: result.agentId }).where(eq(coaches.userId, user.userId));
+          await publishAgentIdRecord(user.userId);
         })
         .catch((e) => console.error("mint: background ERC-8004 registration crashed", e));
     };
@@ -329,6 +367,9 @@ export async function POST(req: Request) {
         tokenId,
         endpoint: `${SITE_URL}/coach/${tokenId}`,
         avatar: `${SITE_URL}/api/coach/${tokenId}/avatar`,
+        url: `${SITE_URL}/coach/${tokenId}`,
+        description: coachDescription(name, personality),
+        personality,
       })
         .then(async (result) => {
           if ("error" in result) {
@@ -337,6 +378,7 @@ export async function POST(req: Request) {
           }
           console.log("mint: background ENS assignment ok", result.name, result.txHash);
           await db.update(coaches).set({ ensName: result.name }).where(eq(coaches.userId, user.userId));
+          await publishAgentIdRecord(user.userId);
         })
         .catch((e) => console.error("mint: background ENS assignment crashed", e));
     };
