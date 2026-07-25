@@ -45,7 +45,12 @@ vi.mock("@/db", () => ({
 }));
 
 vi.mock("../zerog/storage", () => ({
-  uploadEncrypted: vi.fn(async () => ({ ok: true, rootHash: "0xgpxroot", txHash: "0xgpxtx" })),
+  // The GPX root is now committed locally and uploaded behind the run (same as
+  // the mint route), so the pipeline prepares rather than uploads.
+  prepareEncryptedUpload: vi.fn(async () => ({
+    rootHash: "0xgpxroot",
+    upload: async () => ({ ok: true, rootHash: "0xgpxroot", txHash: "0xgpxtx" }),
+  })),
   // AMENDMENT 1 evidence: a freshly uploaded blob is not downloadable for
   // 16+ minutes on real Galileo (docs/0g-reality-check.md). The happy path
   // must never call this — if it does, tests fail loudly instead of
@@ -84,18 +89,24 @@ const scoreRunMock = vi.fn<() => Promise<ScoreOutcome>>(async () => ({
 }));
 vi.mock("./score", () => ({ scoreRun: scoreRunMock }));
 
-// persistMemory is the only thing mocked from ./memory: appendRun/buildProfile
-// are pure and exercised for real, but persistMemory needs SERVICE_ENC_KEY
-// (env, not set in test) to encrypt the profile layer — mocking it avoids
-// that dependency entirely, same pattern as mint.test.ts.
-const persistMemoryMock = vi.fn(async (_memory: CoachMemory, _userKey: Buffer) => ({
+// prepareMemoryCommit is the only thing mocked from ./memory: appendRun and
+// buildProfile are pure and exercised for real, but this one needs
+// SERVICE_ENC_KEY (env, not set in test) to encrypt the profile layer —
+// mocking it avoids that dependency entirely, same pattern as mint.test.ts.
+const memoryUploadMock = vi.fn(async () => ({
   memory: { ok: true, rootHash: "0xnewmem", txHash: "0xtx1" },
   profile: { ok: true, rootHash: "0xnewprof", txHash: "0xtx2" },
+}));
+const prepareMemoryCommitMock = vi.fn(async (_memory: CoachMemory, _userKey: Buffer) => ({
+  memoryRoot: "0xnewmem",
+  profileRoot: "0xnewprof",
   memoryCipher: "fresh-cipher-envelope",
+  profileCipher: "fresh-profile-envelope",
+  upload: memoryUploadMock,
 }));
 vi.mock("./memory", async (orig) => ({
   ...(await orig()) as object,
-  persistMemory: persistMemoryMock,
+  prepareMemoryCommit: prepareMemoryCommitMock,
 }));
 
 const gpx = readFileSync(join(__dirname, "../gpx/fixtures/short-run.gpx"), "utf8");
@@ -104,7 +115,7 @@ describe("processRun", () => {
   beforeEach(() => {
     for (const k of Object.keys(stepLog)) delete stepLog[k];
     coachUpdates.length = 0;
-    persistMemoryMock.mockClear();
+    prepareMemoryCommitMock.mockClear();
     scoreRunMock.mockClear();
     scoreRunMock.mockResolvedValue({
       ok: true as const, score: 4 as const, note: "sforzo alto", verified: true, model: "qwen2.5-omni-7b",
@@ -130,8 +141,8 @@ describe("processRun", () => {
 
     // AMENDMENT 2 evidence: gpxRoot/gpxContentHash/report land on the
     // RunSummary the pipeline appends to memory before persisting it.
-    expect(persistMemoryMock).toHaveBeenCalledTimes(1);
-    const [updatedMemory] = persistMemoryMock.mock.calls[0];
+    expect(prepareMemoryCommitMock).toHaveBeenCalledTimes(1);
+    const [updatedMemory] = prepareMemoryCommitMock.mock.calls[0];
     const appended = updatedMemory.privateLayer.runs.at(-1)!;
     expect(appended).toBeDefined();
     expect(appended.gpxRoot).toBe("0xgpxroot");
@@ -149,6 +160,17 @@ describe("processRun", () => {
     expect(scoreRunMock).toHaveBeenCalledTimes(1);
     expect(stepLog.last.score).toMatchObject({ status: "done" });
     expect(stepLog.scoreWrite).toMatchObject({ effortScore: 4, scoreNote: "sforzo alto", scoreVerified: "true" });
+  });
+
+  it("non aspetta gli upload su 0G: la corsa è pronta e i byte partono dietro", async () => {
+    // Il motivo per cui esiste: aspettare la finalità di 0G Storage (minuti, a
+    // volte decine) teneva la corsa in "processing" con l'atleta davanti a uno
+    // step che sembrava fermo, mentre a valle nessuno ha bisogno dei byte: la
+    // memoria registra il root, la catena ancora la memoria.
+    const { processRun } = await import("./pipeline");
+    await processRun(1, 1, gpx, Buffer.alloc(32));
+    expect(stepLog.status).toBe("done");
+    expect(memoryUploadMock).toHaveBeenCalled(); // avviato, non atteso
   });
 
   it("score non disponibile → NON fa fallire la corsa, inference completa comunque", async () => {
@@ -197,7 +219,7 @@ describe("processRun", () => {
     // The row must hold ciphertext ONLY — the plaintext must never appear verbatim on it.
     expect(stepLog.feelingsCipherWrite).not.toContain("legs felt heavy today");
 
-    const [updatedMemory] = persistMemoryMock.mock.calls[0];
+    const [updatedMemory] = prepareMemoryCommitMock.mock.calls[0];
     const appended = updatedMemory.privateLayer.runs.at(-1)!;
     expect(appended.feelings).toBe("legs felt heavy today");
   });
@@ -210,7 +232,7 @@ describe("processRun", () => {
     expect(stepLog.status).toBe("done");
     expect(stepLog.feelingsCipherWrite).toBeNull();
 
-    const [updatedMemory] = persistMemoryMock.mock.calls[0];
+    const [updatedMemory] = prepareMemoryCommitMock.mock.calls[0];
     const appended = updatedMemory.privateLayer.runs.at(-1)!;
     expect(appended.feelings).toBeNull();
   });

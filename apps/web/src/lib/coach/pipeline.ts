@@ -5,10 +5,10 @@ import { coaches, runs, type RunStep, type StepState } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { parseGpx } from "../gpx/parse";
 import { decryptJson, encryptJson, canDecrypt } from "../crypto/aes";
-import { downloadDecrypted, uploadEncrypted } from "../zerog/storage";
+import { downloadDecrypted, prepareEncryptedUpload } from "../zerog/storage";
 import { toBytes32, updateRegistry } from "../zerog/contracts";
 import { completeJson } from "../inference";
-import { appendRun, buildProfile, parseMemory, persistMemory } from "./memory";
+import { appendRun, buildProfile, parseMemory, prepareMemoryCommit } from "./memory";
 import { commitMemory } from "./commit";
 import { buildReportMessages, ReportSchema } from "./prompts";
 import { scoreRun } from "./score";
@@ -61,10 +61,34 @@ export async function processRun(
     await mark("encrypt", { status: "done" }, { stats, polyline, feelingsCipher });
 
     // 2. encrypted GPX to storage
+    //
+    // The root is the merkle hash of the ENCRYPTED stream and is computed
+    // locally, so it is final the moment the bytes are prepared — the network
+    // is not involved in knowing it. Waiting for the upload here meant waiting
+    // for 0G Storage finality (measured in minutes, sometimes tens of them, see
+    // docs/0g-reality-check.md) with the athlete staring at a step that looked
+    // frozen, while nothing downstream actually needs the bytes to have landed:
+    // the memory records the root, the chain anchors the memory. So the run
+    // continues and the upload follows it, exactly as the mint route does.
     currentStep = "store_gpx";
-    const gpxReceipt = await uploadEncrypted(new TextEncoder().encode(gpxXml), userKey);
-    if (!gpxReceipt.ok) return fail("store_gpx", gpxReceipt.error);
-    await mark("store_gpx", { status: "done", detail: gpxReceipt.rootHash }, { gpxRoot: gpxReceipt.rootHash });
+    const gpxPrep = await prepareEncryptedUpload(new TextEncoder().encode(gpxXml), userKey);
+    await mark(
+      "store_gpx",
+      { status: "done", detail: `${gpxPrep.rootHash} · upload su 0G in corso` },
+      { gpxRoot: gpxPrep.rootHash },
+    );
+    // Settles after the run is already usable; the step detail is corrected to
+    // what actually happened, so "stored" never outruns the truth for long.
+    gpxPrep
+      .upload()
+      .then(async (receipt) => {
+        await mark("store_gpx", {
+          status: receipt.ok ? "done" : "error",
+          detail: receipt.ok ? gpxPrep.rootHash : `upload fallito: ${receipt.error}`,
+        });
+        console.log(`pipeline: background GPX upload for run ${runId}`, receipt);
+      })
+      .catch((e) => console.error(`pipeline: background GPX upload for run ${runId} crashed`, e));
 
     // 3. memory: read (cache-first) -> decrypt -> append -> re-persist
     currentStep = "update_memory";
@@ -105,33 +129,34 @@ export async function processRun(
     // to build its prompt, so the report for THIS run is not known yet at
     // manifest-write time. Documented, accepted gap — not backfilled here.
     const updated = appendRun(memory, {
-      ...stats, reportHeadline: "", gpxRoot: gpxReceipt.rootHash, gpxContentHash, report: null,
+      ...stats, reportHeadline: "", gpxRoot: gpxPrep.rootHash, gpxContentHash, report: null,
       feelings,
     });
-    const receipts = await persistMemory(updated, userKey);
-    if (!receipts.memory.ok || !receipts.profile.ok) return fail("update_memory", "persist fallita");
+    // Same reasoning as the GPX above: hash locally, commit, keep going, upload
+    // behind. The cached envelopes on the coaches row are what every hot path
+    // reads, so the coach is fully up to date before a single byte has moved.
+    const commit = await prepareMemoryCommit(updated, userKey);
     // Compare-and-swap on the root we started from: a brief edit or a run
-    // deletion can land while this upload is in flight, and a blind write would
-    // silently throw their change away (or theirs would throw this run away).
-    // Losing the race here is not fatal — the run's own row is intact and the
-    // step says why — but it must never pass for success.
-    const committed = await commitMemory(coach.userId, coach.memoryRoot, {
-      memoryRoot: receipts.memory.rootHash,
-      profileRoot: receipts.profile.rootHash,
-      memoryCipher: receipts.memoryCipher,
-      profileCipher: receipts.profileCipher,
-    });
+    // deletion can land while this runs, and a blind write would silently throw
+    // their change away (or theirs would throw this run away). Losing the race
+    // is not fatal — the run's own row is intact and the step says why — but it
+    // must never pass for success.
+    const committed = await commitMemory(coach.userId, coach.memoryRoot, commit);
     if (!committed) {
       return fail("update_memory", "la memoria del coach è cambiata durante l'elaborazione (altra modifica in corso): ricarica la corsa e riprova");
     }
-    await mark("update_memory", { status: "done", detail: receipts.memory.rootHash });
+    commit
+      .upload()
+      .then((receipts) => console.log(`pipeline: background memory upload for run ${runId}`, receipts))
+      .catch((e) => console.error(`pipeline: background memory upload for run ${runId} crashed`, e));
+    await mark("update_memory", { status: "done", detail: commit.memoryRoot });
 
     // 4. hash on-chain
     currentStep = "registry_tx";
     const regTx = await updateRegistry(
       coach.tokenId,
-      toBytes32(receipts.memory.rootHash),
-      toBytes32(receipts.profile.rootHash),
+      toBytes32(commit.memoryRoot),
+      toBytes32(commit.profileRoot),
     );
     await mark("registry_tx", { status: "done", detail: regTx }, { registryTx: regTx });
 
