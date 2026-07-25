@@ -16,17 +16,17 @@ const PILLARS = [
   },
   {
     promise: "The coach is yours",
-    how: "Your coach is an intelligent NFT (ERC-7857 “Agentic ID”) minted on 0G Chain. Its memory — everything it has learned about you — belongs to the token, and the token belongs to your wallet. No platform sits between you and your coach.",
+    how: "Your coach is an intelligent NFT (ERC-7857 “Agentic ID”) minted on 0G Galileo (chainId 16602). Its personality and memory — everything it has learned about you — are bound to a token you hold, not an account you rent. No platform sits between you and your coach.",
     label: "iNFT / 0G Chain",
   },
   {
     promise: "Nobody reads your runs",
-    how: "Analysis runs on 0G Compute inside a trusted execution environment (TEE): the hardware itself guarantees that nobody — not the provider, not us — can peek at your data while the coach thinks. Each response ships with a cryptographic attestation.",
+    how: "Analysis runs on 0G Compute inside a trusted execution environment (TEE): the hardware itself guarantees that nobody — not the provider, not us — can peek at your data while the coach thinks. Inference takes about 20 seconds of measured latency, is billed on-chain against a provider address and request ID, and each response ships with a cryptographic attestation.",
     label: "TEE inference / 0G Compute",
   },
   {
     promise: "Check it yourself",
-    how: "Every run produces on-chain receipts: the hash of your coach’s updated memory is written to a public registry, and storage and inference leave verifiable traces on public explorers. You never have to take our word for it.",
+    how: "Every run produces on-chain receipts: the hash of your coach’s updated memory is anchored on-chain in a public registry, and storage and inference leave verifiable traces on public explorers. The coach’s growth is verifiable by anyone — you never have to take our word for it.",
     label: "On-chain proofs",
   },
 ];

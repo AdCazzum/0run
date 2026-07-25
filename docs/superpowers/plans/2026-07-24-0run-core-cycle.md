@@ -124,7 +124,7 @@ services:
       POSTGRES_USER: orun
       POSTGRES_PASSWORD: orun
       POSTGRES_DB: orun
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [dbdata:/var/lib/postgresql/data]
 volumes:
   dbdata:
@@ -924,7 +924,7 @@ git add apps/web/src/lib/zerog && git commit -m "feat(web): 0G storage service w
 - Test: `apps/web/src/lib/inference/inference.test.ts`
 
 **Interfaces:**
-- Produces: `coachComplete(messages: ChatMsg[]): Promise<CoachCompletion>` con `type ChatMsg = { role: "system"|"user"|"assistant"; content: string }` e `type CoachCompletion = { text: string; verified: boolean | null; model: string; path: "router"|"direct" }` · `completeJson<T>(schema: ZodType<T>, messages: ChatMsg[], retries?: number): Promise<{ value: T; meta: CoachCompletion }>` — ritenta rimandando l'errore di validazione al modello. Fallback: primario → fallback → (se `DIRECT_ENABLED=1`) direct. `verified` è `null` sul router (attestazione non per-risposta), boolean sul direct (da `processResponse`).
+- Produces: `coachComplete(messages: ChatMsg[]): Promise<CoachCompletion>` con `type ChatMsg = { role: "system"|"user"|"assistant"; content: string }` e `type CoachCompletion = { text: string; verified: boolean | null; model: string; path: "router"|"direct" }` · `completeJson<T>(schema: ZodType<T>, messages: ChatMsg[], retries?: number): Promise<{ value: T; meta: CoachCompletion }>` — ritenta rimandando l'errore di validazione al modello. Fallback: primario → fallback → (se `DIRECT_ENABLED=1`) direct. `verified` è `boolean | null` su entrambi i path: `true/false` = esito reale di `processResponse` (solo direct), `null` = attestazione non disponibile (router, oppure `processResponse` fallito — loggato con warn).
 
 - [ ] **Step 1: Failing test (fetch mockato)**
 
@@ -2034,6 +2034,8 @@ git add apps/web/src && git commit -m "feat(web): coach mint flow — api, oncha
 
 **Interfaces:**
 - Consumes: parser (Task 4), crypto (5), storage (7), inference (8), memoria (10), contratti (13: `updateRegistry`), db (6).
+- **Emendamento FINALITY (misurato 2026-07-25 — vincolante):** la finality di 0G Storage testnet supera i **6 minuti** per un file da 658 KB (l'indexer risponde `{"code":101,"message":"File not found"}` fino a finalizzazione). Conseguenza: **un blob appena caricato non è scaricabile**, quindi la pipeline NON deve mai dipendere dal download di un blob fresco. In particolare `processRun` non può fare `downloadDecrypted(coach.memoryRoot)` — alla prima corsa dopo il mint quella memoria è stata caricata pochi secondi prima e il download fallirebbe, rompendo la prima esperienza di ogni utente. Design corretto: la colonna `coaches.memoryCipher` (text) conserva l'envelope cifrato della memoria come **cache**; la pipeline e la chat leggono da lì (decifrando con la chiave utente, nessun plaintext a riposo), 0G Storage resta la copia durevole e verificabile ancorata on-chain, e il download da Storage serve solo nel percorso di re-sync (dove i blob sono vecchi e finalizzati). Il claim ai giudici resta vero: i dati vivono cifrati su 0G, il DB è un indice ricostruibile.
+- **Emendamento SSOT (approvato 2026-07-25, vedi `docs/superpowers/specs/2026-07-25-storage-ssot-spec.md`):** `RunSummary` in `packages/shared/src/types.ts` si estende con `gpxRoot: string`, `gpxContentHash: string` (keccak256 del GPX in chiaro, per dedup applicativo) e `report: Report | null`. La memoria cifrata diventa così il manifest completo dell'utente: il DB è interamente ricostruibile da Storage + chain senza contratti, upload o tx aggiuntivi. La pipeline scrive questi campi quando aggiunge la corsa alla memoria.
 - Produces: `POST /api/runs` (multipart: `gpx` file + `userKeyHex`) → `{ runId }` subito, elaborazione in background · `GET /api/runs/:id` → riga run con `steps` (per il polling della UI) · `processRun(runId, userId, gpxXml, userKey): Promise<void>` in `pipeline.ts` — aggiorna `runs.steps` step-by-step, mai throw non gestito (stato `error` con detail).
 
 - [ ] **Step 1: Failing test pipeline (dipendenze mockate)**
@@ -2360,7 +2362,14 @@ export async function POST(req: Request) {
 }
 ```
 
-`apps/web/src/app/runs/[id]/page.tsx` — layout asimmetrico 12 colonne: mappa `md:col-span-5 md:col-start-1`, report `md:col-span-6 md:col-start-7` (7/5 spezzato, mai 50/50); sopra, `<PipelineSteps>` finché `status === "processing"`; sotto il report, `<Chat>`. `apps/web/src/app/dashboard/page.tsx` — dashboard autenticata: lista corse come `<Card>` con overline data + stats, card del coach, CTA upload. (La route `/` pubblica è il Task 17.)
+`apps/web/src/app/runs/[id]/page.tsx` — layout asimmetrico 12 colonne: mappa `md:col-span-5 md:col-start-1`, report `md:col-span-6 md:col-start-7` (7/5 spezzato, mai 50/50); sopra, `<PipelineSteps>` finché `status === "processing"`; sotto il report, `<Chat>`. `apps/web/src/app/dashboard/page.tsx` — dashboard autenticata (specifica concordata con Ivan il 2026-07-25). È un **feed editoriale di card**, non un registro di allenamenti:
+
+- **Card della corsa**: overline con la data + linea decorativa, poi la **headline del report del coach** in Playfair (il campo `headline` che già generiamo) come elemento dominante, le statistiche come micro-label uppercase sotto, e il badge di prova (TEE/tx). Il differenziale del prodotto deve essere leggibile nel feed: se la card mostra solo "5,02 km · 25:00" abbiamo fatto Strava.
+- **Quattro stati, tutti progettati** (uno stato vuoto non gestito è il primo giudizio che si prende un giudice al login): (a) nessun coach → CTA al mint con la copy da manifesto; (b) coach senza corse → è qui che vive l'onboarding, non in un tooltip; (c) corsa in `processing` → la card mostra la pipeline a stati inline, perché l'elaborazione dura minuti e senza feedback l'utente crede che l'upload sia andato perso; (d) feed popolato.
+- **Header**: card del coach (nome ENS quando c'è, link a iNFT/explorer) e stato discreto dei dati sanitari (es. "health data · 7 giorni coperti"). I dati sanitari NON sono un'attività e non entrano nel feed: sono un layer di contesto e il loro effetto si vede dentro i report ("recovery context"), non come card.
+- **CTA**: upload di una nuova corsa in evidenza; upload dei dati sanitari nell'area coach/profilo, non nel feed.
+
+**Chat**: una sola implementazione e un solo endpoint, con un `runId` opzionale. Dalla pagina di una corsa la chat pinna quella corsa nel contesto del prompt (altrimenti "com'è andata?" non ha referente); dalla dashboard è generale sullo storico. (La route `/` pubblica è il Task 17.)
 
 - [ ] **Step 4: Run to verify pass** — `npx vitest run -w web src/components/run` → PASS (2 test). Verifica manuale end-to-end su Galileo reale: upload GPX vero → 5 step verdi → report con confronto → chat risponde in personalità.
 

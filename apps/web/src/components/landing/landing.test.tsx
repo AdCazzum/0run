@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
-}));
+vi.mock("@privy-io/react-auth", () => ({ usePrivy: () => ({ authenticated: false }), useLogin: () => ({ login: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 import { Hero } from "./hero";
 import { HowItWorks } from "./how-it-works";
+import { Manifesto } from "./manifesto";
+import { BenefitsSection } from "./benefits-section";
 
 describe("landing", () => {
   it("hero: headline serif con parola italic orange, overline con linea decorativa, CTA", () => {
@@ -23,10 +24,12 @@ describe("landing", () => {
     expect(screen.getByText("02")).toBeTruthy();
     expect(screen.getByText("03")).toBeTruthy();
   });
-  it("copy della home senza gergo tecnico", () => {
-    const { container: hero } = render(<Hero />);
-    const { container: how } = render(<HowItWorks />);
-    const text = `${hero.textContent} ${how.textContent}`.toLowerCase();
+  it("copy della home senza gergo tecnico (la tecnologia vive su /technology)", () => {
+    const sections = [<Hero key="h" />, <Manifesto key="m" />, <HowItWorks key="w" />, <BenefitsSection key="b" />];
+    const text = sections
+      .map((s) => render(s).container.textContent)
+      .join(" ")
+      .toLowerCase();
     for (const banned of [/\bnft\b/, /\btee\b/, /\b0g\b/, /blockchain/, /on-chain/, /encrypt/, /\bgpx\b/, /wallet/]) {
       expect(text).not.toMatch(banned);
     }

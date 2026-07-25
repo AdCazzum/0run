@@ -1,0 +1,125 @@
+import { ethers } from "ethers";
+import { CoachMemorySchema } from "@0run/shared";
+import { db } from "@/db";
+import { coaches, runs, type RunStep, type StepState } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { parseGpx } from "../gpx/parse";
+import { decryptJson } from "../crypto/aes";
+import { downloadDecrypted, uploadEncrypted } from "../zerog/storage";
+import { toBytes32, updateRegistry } from "../zerog/contracts";
+import { completeJson } from "../inference";
+import { appendRun, buildProfile, persistMemory } from "./memory";
+import { buildReportMessages, ReportSchema } from "./prompts";
+
+const ALL_STEPS: RunStep[] = ["encrypt", "store_gpx", "update_memory", "registry_tx", "inference"];
+export const initialSteps = (): Record<RunStep, StepState> =>
+  Object.fromEntries(ALL_STEPS.map((s) => [s, { status: "pending" }])) as Record<RunStep, StepState>;
+
+/**
+ * Runs the whole upload pipeline for one GPX and mutates `runs` row `runId`
+ * step-by-step so the UI can poll it. Never throws unhandled — every
+ * failure mode ends in `status: "error"` on the row with a human-readable
+ * detail on the step that failed.
+ */
+export async function processRun(runId: number, userId: number, gpxXml: string, userKey: Buffer): Promise<void> {
+  const steps = initialSteps();
+  const mark = async (step: RunStep, state: StepState, extra: Partial<typeof runs.$inferInsert> = {}) => {
+    steps[step] = state;
+    await db.update(runs).set({ steps: { ...steps }, ...extra }).where(eq(runs.id, runId));
+  };
+  const fail = async (step: RunStep, detail: string) => {
+    steps[step] = { status: "error", detail };
+    await db.update(runs).set({ steps: { ...steps }, status: "error" }).where(eq(runs.id, runId));
+  };
+
+  // Tracks which stage we're in so the catch block below can attribute an
+  // unexpected throw (parse error, wrong decryption key, inference schema
+  // failure, a rejected on-chain tx...) to the right step instead of
+  // guessing — every stage that can throw sets this right before it runs.
+  let currentStep: RunStep = "encrypt";
+
+  try {
+    // 1. parse + "encrypt" (actual encryption happens inside uploadEncrypted;
+    // this step represents it in the UI) + content hash for the manifest.
+    currentStep = "encrypt";
+    const { stats, polyline } = parseGpx(gpxXml);
+    const gpxContentHash = ethers.keccak256(ethers.toUtf8Bytes(gpxXml));
+    await mark("encrypt", { status: "done" }, { stats, polyline });
+
+    // 2. encrypted GPX to storage
+    currentStep = "store_gpx";
+    const gpxReceipt = await uploadEncrypted(new TextEncoder().encode(gpxXml), userKey);
+    if (!gpxReceipt.ok) return fail("store_gpx", gpxReceipt.error);
+    await mark("store_gpx", { status: "done", detail: gpxReceipt.rootHash }, { gpxRoot: gpxReceipt.rootHash });
+
+    // 3. memory: read (cache-first) -> decrypt -> append -> re-persist
+    currentStep = "update_memory";
+    const [coach] = await db.select().from(coaches).where(eq(coaches.userId, userId));
+    if (!coach) return fail("update_memory", "coach non trovato");
+    // An empty tokenId means the row is only a mint reservation (see the mint route):
+    // proceeding would try to read an empty memoryRoot and fail with a confusing
+    // storage error instead of naming the real cause.
+    if (!coach.tokenId) return fail("update_memory", "coach non ancora mintato: completa il mint prima di caricare una corsa");
+
+    // AMENDMENT 1 (docs/0g-reality-check.md, measured 2026-07-25): a freshly
+    // uploaded blob is not reliably downloadable from 0G Storage for 16+
+    // minutes. Reading the coach's memory back from Storage on this hot path
+    // would fail on every user's FIRST run right after minting (that blob
+    // was uploaded seconds earlier). coaches.memoryCipher caches the same
+    // AES envelope encryptJson(memory, userKey) produces — ciphertext only —
+    // so the pipeline decrypts from there directly. Storage stays the
+    // durable, on-chain-anchored source of truth; the DB is a rebuildable
+    // cache of it. Only fall back to downloadDecrypted when the cache is
+    // empty (rows minted before this column existed, or a future re-sync
+    // path) — by then the blob is old and finalized, so the download is safe.
+    let memoryCipherText: string;
+    if (coach.memoryCipher) {
+      memoryCipherText = coach.memoryCipher;
+    } else {
+      const memDl = await downloadDecrypted(coach.memoryRoot, userKey, (buf) => {
+        try { JSON.parse(buf.toString("utf8")); return true; } catch { return false; }
+      });
+      if (!memDl.ok) return fail("update_memory", memDl.error);
+      memoryCipherText = memDl.data.toString("utf8");
+    }
+    const memory = decryptJson(memoryCipherText, userKey, CoachMemorySchema);
+
+    // AMENDMENT 2 (SSOT): the manifest fields land on the RunSummary right
+    // here, when it's appended. `report` is null: inference (step 5) runs
+    // after this append+persist because it needs the updated memory/profile
+    // to build its prompt, so the report for THIS run is not known yet at
+    // manifest-write time. Documented, accepted gap — not backfilled here.
+    const updated = appendRun(memory, {
+      ...stats, reportHeadline: "", gpxRoot: gpxReceipt.rootHash, gpxContentHash, report: null,
+    });
+    const receipts = await persistMemory(updated, userKey);
+    if (!receipts.memory.ok || !receipts.profile.ok) return fail("update_memory", "persist fallita");
+    await db.update(coaches).set({
+      memoryRoot: receipts.memory.rootHash,
+      profileRoot: receipts.profile.rootHash,
+      memoryCipher: receipts.memoryCipher, // refresh the cache in the same write, see comment above
+    }).where(eq(coaches.id, coach.id));
+    await mark("update_memory", { status: "done", detail: receipts.memory.rootHash });
+
+    // 4. hash on-chain
+    currentStep = "registry_tx";
+    const regTx = await updateRegistry(
+      coach.tokenId,
+      toBytes32(receipts.memory.rootHash),
+      toBytes32(receipts.profile.rootHash),
+    );
+    await mark("registry_tx", { status: "done", detail: regTx }, { registryTx: regTx });
+
+    // 5. inference
+    currentStep = "inference";
+    const profile = buildProfile(updated);
+    const { value: report, meta } = await completeJson(ReportSchema, buildReportMessages(profile, memory.privateLayer.runs, stats));
+    await mark("inference", { status: "done" }, {
+      report, model: meta.model,
+      verifiedTee: meta.verified === null ? "unavailable" : String(meta.verified),
+      status: "done",
+    });
+  } catch (e: any) {
+    await fail(currentStep, String(e?.message ?? e));
+  }
+}
