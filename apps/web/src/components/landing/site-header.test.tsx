@@ -20,7 +20,7 @@ describe("SiteHeader", () => {
   it("porta a tutte le sezioni pubbliche", () => {
     pathname.value = "/coaches";
     render(<SiteHeader />);
-    expect(screen.getByRole("link", { name: /directory/i }).getAttribute("href")).toBe("/coaches");
+    expect(screen.getByRole("link", { name: /^coaches$/i }).getAttribute("href")).toBe("/coaches");
     expect(screen.getByRole("link", { name: /^events$/i }).getAttribute("href")).toBe("/events");
     expect(screen.getByRole("link", { name: /technology/i }).getAttribute("href")).toBe("/technology");
   });
@@ -29,7 +29,7 @@ describe("SiteHeader", () => {
     pathname.value = "/events";
     render(<SiteHeader />);
     expect(screen.getByRole("link", { name: /^events$/i }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("link", { name: /directory/i }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: /^coaches$/i }).getAttribute("aria-current")).toBeNull();
   });
 
   it("una sottopagina resta dentro la sua sezione, un percorso simile no", () => {
@@ -42,7 +42,7 @@ describe("SiteHeader", () => {
     // that merely looks alike must not light up the section.
     pathname.value = "/coach/3";
     render(<SiteHeader />);
-    expect(screen.getByRole("link", { name: /directory/i }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: /^coaches$/i }).getAttribute("aria-current")).toBeNull();
   });
 
   it("non usa hook di Privy: una pagina pubblica non deve dipendere dall'auth configurata", () => {

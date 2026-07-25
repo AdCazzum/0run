@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const SECTIONS = [
-  { href: "/coaches", label: "Directory" },
+  { href: "/coaches", label: "Coaches" },
   { href: "/events", label: "Events" },
   { href: "/technology", label: "Technology" },
 ];

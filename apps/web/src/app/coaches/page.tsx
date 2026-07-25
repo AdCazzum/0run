@@ -7,9 +7,9 @@ import { SiteHeader } from "@/components/landing/site-header";
 import { SiteFooter } from "@/components/landing/site-footer";
 
 export const metadata: Metadata = {
-  title: "Coach directory — 0run",
+  title: "Coaches — 0run",
   description:
-    "Every 0run coach agent whose ENS identity resolves live, enumerated from the ERC-7857 agent registry on 0G Galileo.",
+    "Every 0run coach you can look up by name: real ENS names, resolved live, for agents that exist on 0G Galileo.",
 };
 
 // Always hit the (internally 60s-cached) live directory — never a
@@ -71,42 +71,42 @@ export default async function CoachesDirectoryPage() {
           className="absolute right-8 top-32 hidden font-sans text-[10px] uppercase tracking-[0.3em] text-ocean lg:block"
           style={{ writingMode: "vertical-rl" }}
         >
-          0run / agent directory
+          0run / coaches
         </span>
 
         <div className="flex items-center gap-4">
           <span aria-hidden className="h-px w-12 bg-navy" />
-          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Onchain, resolved live</span>
+          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Real names, resolved live</span>
         </div>
 
         <h1 className="mt-8 max-w-3xl font-serif text-6xl leading-[0.9] text-navy md:text-8xl">
           Every coach, <em className="font-serif italic text-orange">discoverable</em>.
         </h1>
         <p className="mt-8 max-w-xl font-sans text-lg leading-relaxed text-navy">
-          Enumerated straight from the agent registry on 0G Galileo, then named live through ENS.
-          Only agents whose ENS identity resolves right now appear here, so every name below is one
-          you can look up yourself — never a database claiming to be the list.
+          Every coach here has a name of its own — a real ENS name, like{" "}
+          <span className="text-orange">pedro.0run.eth</span> — that anyone can look up, anywhere,
+          without going through us. Ask one for a second opinion on your training, or read how it
+          coaches before you make your own.
+        </p>
+        <p className="mt-4 max-w-xl font-sans text-sm leading-relaxed text-ocean">
+          This page is not a list we keep: it is built by asking the network who exists and what each
+          name answers to, every time you open it.
         </p>
 
         {loadFailed && (
           <p className="mt-12 max-w-xl border-t border-navy/15 pt-8 font-sans text-sm leading-relaxed text-ocean">
-            The directory could not be built just now. This is a live failure — of a chain read, an
-            ENS lookup, or the local index — not an empty directory: reload in a moment.
+            We could not load the coaches just now. Something on our side failed, so this is not an
+            empty page — give it a moment and reload.
           </p>
         )}
 
         {!loadFailed && entries.length === 0 && (
           <p className="mt-12 max-w-xl border-t border-navy/15 pt-8 font-sans text-sm leading-relaxed text-ocean">
+            {/* "Nobody has one yet" and "we could not read the names right now" are
+                different things, and only one of them is the reader's problem. */}
             {unresolvedCount > 0
-              ? `${unresolvedCount} ${unresolvedCount === 1 ? "agent exists" : "agents exist"} on-chain, but no ENS identity resolves at this moment — a resolution problem, not an empty registry.`
-              : "No agent has minted a coach yet."}
-          </p>
-        )}
-
-        {!loadFailed && entries.length > 0 && unresolvedCount > 0 && (
-          <p className="mt-12 max-w-xl font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
-            {unresolvedCount} more {unresolvedCount === 1 ? "agent exists" : "agents exist"} on-chain
-            without a resolving ENS identity
+              ? "No coach name can be looked up at this moment. Coaches do exist — this is a lookup problem on our side, not an empty page."
+              : "No one has created a coach yet."}
           </p>
         )}
 
@@ -145,7 +145,7 @@ function DirectoryCard({ entry }: { entry: ResolvedEntry }) {
           lists agents whose name resolved a moment ago, so it is always present. */}
       <h2 className="font-serif text-4xl leading-tight text-orange">{entry.displayName}</h2>
       <p className="mt-2 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
-        agent #{entry.tokenId}
+        coach #{entry.tokenId}
       </p>
 
       <p className="mt-4 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
@@ -161,7 +161,7 @@ function DirectoryCard({ entry }: { entry: ResolvedEntry }) {
             entry.mismatch ? "text-orange" : "text-ocean"
           }`}
         >
-          {entry.mismatch ? "ENS ↔ chain pointer disagrees — flagged, not hidden" : "ENS ↔ chain pointer verified"}
+          {entry.mismatch ? "this name points at another coach — shown, not hidden" : "name and coach match"}
         </p>
       )}
 
@@ -172,7 +172,7 @@ function DirectoryCard({ entry }: { entry: ResolvedEntry }) {
           rel="noopener noreferrer"
           className="font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
         >
-          ens · sepolia ↗
+          look up this name ↗
         </a>
         {AGENT_NFT_ADDRESS && (
           <a
@@ -181,14 +181,14 @@ function DirectoryCard({ entry }: { entry: ResolvedEntry }) {
             rel="noopener noreferrer"
             className="font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
           >
-            chain · galileo ↗
+            see it onchain ↗
           </a>
         )}
         <Link
           href={`/coach/${entry.tokenId}`}
           className="font-sans text-[10px] uppercase tracking-[0.25em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
         >
-          agent identity ↗
+          meet this coach ↗
         </Link>
       </div>
     </article>

@@ -59,10 +59,12 @@ export default async function EventsPage() {
               Anyone can start an event here. A claim only proves that one unique, World-ID-verified
               human showed up to claim it — it is not proof of attendance, and we say so on purpose.
             </p>
-          </div>
-          <div className="col-span-12 flex flex-col items-start gap-4 md:col-span-4 md:col-start-9 md:items-end">
-            <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">Start one</span>
-            <CreateEventForm />
+            {/* The call to action sits under the copy it belongs to, like the one
+                on the home page. Off in its own right-hand column it read as
+                floating debris rather than the next thing to do. */}
+            <div className="mt-10">
+              <CreateEventForm />
+            </div>
           </div>
         </div>
 

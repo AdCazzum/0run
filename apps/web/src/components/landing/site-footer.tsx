@@ -27,7 +27,7 @@ export function SiteFooter() {
             Technology
           </Link>
           <Link href="/coaches" className={LINK_CLASS}>
-            Coach directory
+            Coaches
           </Link>
           {EXTERNAL_LINKS.map((l) => (
             <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className={LINK_CLASS}>
@@ -38,7 +38,7 @@ export function SiteFooter() {
       </div>
       <div className="mx-auto max-w-[1600px] border-t border-navy/15 px-8 py-6 md:px-16">
         <p className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
-          Made at ETHGlobal Lisbon 2026 · Built in the open
+          Made at ETHGlobal Lisbon 2026 · Built on the track
         </p>
       </div>
     </footer>

@@ -26,7 +26,7 @@ export function CreateEventForm() {
   if (!open) {
     return (
       <Button
-        variant="secondary"
+        variant="primary"
         onClick={() => (ready && authenticated ? setOpen(true) : login())}
       >
         New event
