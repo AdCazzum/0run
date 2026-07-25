@@ -28,7 +28,9 @@ jobs:
         run: npx tsc --noEmit
         working-directory: apps/web
       - name: Build
-        # Placeholder public env: the real value is baked on the server at deploy time.
+        # The Privy app id is a public client-side identifier (it ships in the browser
+        # bundle), so it lives in a repo variable rather than a secret. If it is unset
+        # the build still succeeds: Providers skips the auth provider (login disabled).
         env:
-          NEXT_PUBLIC_PRIVY_APP_ID: ci-placeholder-app-id
+          NEXT_PUBLIC_PRIVY_APP_ID: ${{ vars.NEXT_PUBLIC_PRIVY_APP_ID }}
         run: npm run build --workspace web
