@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { claims, events } from "@/db/schema";
 import { Card } from "@/components/ui/card";
 import { CreateEventForm } from "./create-event-form";
+import { SiteHeader } from "@/components/landing/site-header";
+import { SiteFooter } from "@/components/landing/site-footer";
 
 // Queries Postgres per request. Without this Next tries to prerender it at build
 // time, which fails in CI (no database) and would freeze the data into the build
@@ -32,66 +34,70 @@ export default async function EventsPage() {
   const feed = await loadFeed();
 
   return (
-    <main className="relative mx-auto max-w-[1600px] px-8 py-20 md:px-16 md:py-32">
-      <span
-        aria-hidden
-        className="absolute right-8 top-32 hidden font-sans text-[10px] uppercase tracking-[0.3em] text-ocean lg:block"
-        style={{ writingMode: "vertical-rl" }}
-      >
-        0run / events
-      </span>
+    <>
+      <SiteHeader />
+      <main className="relative mx-auto max-w-[1600px] px-8 py-20 md:px-16 md:py-32">
+        <span
+          aria-hidden
+          className="absolute right-8 top-32 hidden font-sans text-[10px] uppercase tracking-[0.3em] text-ocean lg:block"
+          style={{ writingMode: "vertical-rl" }}
+        >
+          0run / events
+        </span>
 
-      <div className="flex items-center gap-4">
-        <span aria-hidden className="h-px w-12 bg-navy" />
-        <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">The crew</span>
-      </div>
-
-      <div className="mt-8 grid grid-cols-12 gap-x-8 gap-y-12">
-        <div className="col-span-12 md:col-span-7">
-          <h1 className="font-serif text-6xl leading-[0.9] text-navy md:text-8xl">
-            Every <em className="font-serif italic text-orange">run</em>, together.
-          </h1>
-          <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
-            Anyone can start an event here. A claim only proves that one unique, World-ID-verified
-            human showed up to claim it — it is not proof of attendance, and we say so on purpose.
-          </p>
+        <div className="flex items-center gap-4">
+          <span aria-hidden className="h-px w-12 bg-navy" />
+          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">The crew</span>
         </div>
-        <div className="col-span-12 flex flex-col items-start gap-4 md:col-span-4 md:col-start-9 md:items-end">
-          <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">Start one</span>
-          <CreateEventForm />
-        </div>
-      </div>
 
-      {feed.length === 0 ? (
-        <section className="mt-24 border-t border-navy/15 pt-16">
-          <p className="max-w-md font-sans text-lg leading-relaxed text-navy">
-            No events yet — be the <em className="font-serif italic text-orange">first</em> to start one.
-          </p>
-        </section>
-      ) : (
-        <section className="mt-24 grid grid-cols-12 gap-x-8 gap-y-16 border-t border-navy/15 pt-16">
-          {feed.map((e, i) => (
-            <div key={e.id} className={i % 2 === 0 ? "col-span-12 md:col-span-7" : "col-span-12 md:col-span-6 md:col-start-7"}>
-              <Link href={`/events/${e.id}`} className="block group">
-                <Card>
-                  <div className="mb-6 flex items-center gap-4">
-                    <span aria-hidden className="h-px w-8 bg-navy/40" />
-                    <span className="font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
-                      {DAY.format(e.startsAt)}
-                    </span>
-                  </div>
-                  <h2 className="font-serif text-3xl leading-tight text-navy transition-colors duration-500 group-hover:text-orange md:text-4xl">
-                    {e.name}
-                  </h2>
-                  <p className="mt-6 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
-                    {e.claimCount} {e.claimCount === 1 ? "claim" : "claims"} · one unique person each
-                  </p>
-                </Card>
-              </Link>
-            </div>
-          ))}
-        </section>
-      )}
-    </main>
+        <div className="mt-8 grid grid-cols-12 gap-x-8 gap-y-12">
+          <div className="col-span-12 md:col-span-7">
+            <h1 className="font-serif text-6xl leading-[0.9] text-navy md:text-8xl">
+              Every <em className="font-serif italic text-orange">run</em>, together.
+            </h1>
+            <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
+              Anyone can start an event here. A claim only proves that one unique, World-ID-verified
+              human showed up to claim it — it is not proof of attendance, and we say so on purpose.
+            </p>
+          </div>
+          <div className="col-span-12 flex flex-col items-start gap-4 md:col-span-4 md:col-start-9 md:items-end">
+            <span className="font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">Start one</span>
+            <CreateEventForm />
+          </div>
+        </div>
+
+        {feed.length === 0 ? (
+          <section className="mt-24 border-t border-navy/15 pt-16">
+            <p className="max-w-md font-sans text-lg leading-relaxed text-navy">
+              No events yet — be the <em className="font-serif italic text-orange">first</em> to start one.
+            </p>
+          </section>
+        ) : (
+          <section className="mt-24 grid grid-cols-12 gap-x-8 gap-y-16 border-t border-navy/15 pt-16">
+            {feed.map((e, i) => (
+              <div key={e.id} className={i % 2 === 0 ? "col-span-12 md:col-span-7" : "col-span-12 md:col-span-6 md:col-start-7"}>
+                <Link href={`/events/${e.id}`} className="block group">
+                  <Card>
+                    <div className="mb-6 flex items-center gap-4">
+                      <span aria-hidden className="h-px w-8 bg-navy/40" />
+                      <span className="font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
+                        {DAY.format(e.startsAt)}
+                      </span>
+                    </div>
+                    <h2 className="font-serif text-3xl leading-tight text-navy transition-colors duration-500 group-hover:text-orange md:text-4xl">
+                      {e.name}
+                    </h2>
+                    <p className="mt-6 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
+                      {e.claimCount} {e.claimCount === 1 ? "claim" : "claims"} · one unique person each
+                    </p>
+                  </Card>
+                </Link>
+              </div>
+            ))}
+          </section>
+        )}
+      </main>
+      <SiteFooter />
+    </>
   );
 }

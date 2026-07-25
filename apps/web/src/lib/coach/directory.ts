@@ -4,6 +4,7 @@ import { GALILEO } from "@0run/shared";
 import { db } from "@/db";
 import { coaches, runs } from "@/db/schema";
 import { resolveCoachEns } from "@/lib/ens/resolve";
+import { slugifyLabel } from "@/lib/ens/subname";
 
 const NFT_ABI = [
   "function nextId() view returns (uint256)",
@@ -27,9 +28,11 @@ export type DirectoryEntry = {
   // app/coach/[tokenId]/page.tsx) how many runs it has read.
   personality: string | null;
   runCount: number | null;
-  // The ENS label this tokenId was assigned (coaches.ensName, written by
-  // assignSubname() at mint time) — null if ENS assignment never happened.
-  // This is a POINTER to attempt resolving, not a claim that it resolves.
+  // The ENS name this tokenId is identified by — normally coaches.ensName,
+  // written by assignSubname() at mint time. When that column is empty the
+  // name is REDISCOVERED from the chain instead (see recoverEnsName below),
+  // so a lost DB write cannot erase an identity that exists on Sepolia.
+  // Either way this is a POINTER that was resolved, not a claim in itself.
   ensName: string | null;
   // Live result of resolving `ensName` just now, via resolveCoachEns() — no
   // cache inside that call, no hard-coded fallback. Null when ensName is
@@ -123,22 +126,25 @@ async function buildDirectory(): Promise<DirectoryEntry[]> {
         runCount = row?.value ?? 0;
       }
 
-      const ensName = dbRow?.ensName ?? null;
+      let ensName = dbRow?.ensName ?? null;
       let ensAddress: string | null = null;
       let ensRecords: Record<string, string> = {};
       if (ensName) {
         const resolution = await resolveCoachEns(ensName);
         ensAddress = resolution.address;
         ensRecords = resolution.records;
+      } else if (dbRow) {
+        const recovered = await recoverEnsName(dbRow.name, tokenId);
+        if (recovered) {
+          ensName = recovered.name;
+          ensAddress = recovered.address;
+          ensRecords = recovered.records;
+        }
       }
       const displayName = ensAddress ? ensName : null;
 
       const inft = parseInftPointer(ensRecords["0run:inft"]);
-      const mismatch = inft
-        ? inft.chainId !== GALILEO.chainId ||
-          inft.contract.toLowerCase() !== (process.env.AGENT_NFT_ADDRESS ?? "").toLowerCase() ||
-          inft.tokenId !== tokenId
-        : false;
+      const mismatch = inft ? pointsElsewhere(inft, tokenId) : false;
 
       return {
         tokenId,
@@ -153,6 +159,49 @@ async function buildDirectory(): Promise<DirectoryEntry[]> {
         mismatch,
       };
     }),
+  );
+}
+
+/**
+ * Recovers an agent's ENS name when `coaches.ens_name` is empty.
+ *
+ * The mint route assigns the subname and stores it in two separate steps, so
+ * the second one can be lost (crash, restart, a column that was not yet
+ * migrated) while the name itself is very much alive on Sepolia. Without this,
+ * such an agent would be permanently nameless in the directory — an artefact
+ * of our index, presented as a fact about ENS.
+ *
+ * Recovery is a GUESS about the label (the same slug assignSubname derives
+ * from the coach's name) and is therefore only trusted against proof: the
+ * name must resolve to an address right now AND its `0run:inft` text record
+ * must point back at exactly this agent — this chain, this contract, this
+ * tokenId. A name that resolves but points elsewhere belongs to someone else
+ * and is discarded, never shown. Nothing is written back to the database
+ * here: this function reads, and its caller renders what it read.
+ */
+async function recoverEnsName(
+  coachName: string,
+  tokenId: string,
+): Promise<{ name: string; address: string; records: Record<string, string> } | null> {
+  const parent = process.env.ENS_PARENT_NAME;
+  if (!parent) return null;
+
+  const candidate = `${slugifyLabel(coachName, tokenId)}.${parent}`;
+  const resolution = await resolveCoachEns(candidate).catch(() => null);
+  if (!resolution?.address) return null;
+
+  const pointer = parseInftPointer(resolution.records["0run:inft"]);
+  if (!pointer || pointsElsewhere(pointer, tokenId)) return null;
+
+  return { name: candidate, address: resolution.address, records: resolution.records };
+}
+
+/** True when an `0run:inft` pointer does not identify the agent being shown. */
+function pointsElsewhere(pointer: InftPointer, tokenId: string): boolean {
+  return (
+    pointer.chainId !== GALILEO.chainId ||
+    pointer.contract.toLowerCase() !== (process.env.AGENT_NFT_ADDRESS ?? "").toLowerCase() ||
+    pointer.tokenId !== tokenId
   );
 }
 

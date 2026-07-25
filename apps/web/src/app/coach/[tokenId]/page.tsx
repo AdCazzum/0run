@@ -6,6 +6,8 @@ import { GALILEO, explorerTx } from "@0run/shared";
 import { db } from "@/db";
 import { coaches, runs } from "@/db/schema";
 import { AskThisCoach } from "@/components/coach/ask-this-coach";
+import { SiteHeader } from "@/components/landing/site-header";
+import { SiteFooter } from "@/components/landing/site-footer";
 
 // Queries Postgres per request. Without this Next tries to prerender it at build
 // time, which fails in CI (no database) and would freeze the data into the build
@@ -52,76 +54,80 @@ export default async function CoachPage({ params }: { params: Promise<{ tokenId:
   const { coach, runsRead } = data;
 
   return (
-    <main className="relative mx-auto max-w-[1600px] px-8 py-20 md:px-16 md:py-32">
-      <span
-        aria-hidden
-        className="absolute right-8 top-32 hidden font-sans text-[10px] uppercase tracking-[0.3em] text-ocean lg:block"
-        style={{ writingMode: "vertical-rl" }}
-      >
-        0run / agent #{coach.tokenId}
-      </span>
+    <>
+      <SiteHeader />
+      <main className="relative mx-auto max-w-[1600px] px-8 py-20 md:px-16 md:py-32">
+        <span
+          aria-hidden
+          className="absolute right-8 top-32 hidden font-sans text-[10px] uppercase tracking-[0.3em] text-ocean lg:block"
+          style={{ writingMode: "vertical-rl" }}
+        >
+          0run / agent #{coach.tokenId}
+        </span>
 
-      <div className="flex items-center gap-4">
-        <span aria-hidden className="h-px w-12 bg-navy" />
-        <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Agentic identity</span>
-      </div>
-
-      <div className="mt-8 grid grid-cols-12 gap-x-8 gap-y-12">
-        <div className="col-span-12 md:col-span-7">
-          <h1 className="font-serif text-6xl leading-[0.9] text-navy md:text-8xl">{coach.name}</h1>
-          <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
-            An AI running coach that exists as an <em className="font-serif italic text-orange">intelligent NFT</em> on
-            0G Chain. Its memory is encrypted with a key only its athlete controls, and the hash of that memory is
-            anchored on-chain every time it reads a new run.
-          </p>
-          <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-ocean">
-            {PERSONALITY_LABEL[coach.personality] ?? coach.personality} · has read {runsRead}{" "}
-            {runsRead === 1 ? "run" : "runs"}. Nothing about those runs is published here: this page shows only what is
-            already on-chain.
-          </p>
+        <div className="flex items-center gap-4">
+          <span aria-hidden className="h-px w-12 bg-navy" />
+          <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">Agentic identity</span>
         </div>
 
-        <dl className="col-span-12 space-y-8 border-t border-navy pt-8 md:col-span-4 md:col-start-9">
-          <Row label="chain">
-            {GALILEO.name} · {GALILEO.chainId}
-          </Row>
-          <Row label="agent token">#{coach.tokenId}</Row>
-          {AGENT_NFT && (
-            <Row label="agent contract">
-              <Ext href={`${GALILEO.explorer}/address/${AGENT_NFT}`}>{short(AGENT_NFT)} ↗</Ext>
-            </Row>
-          )}
-          {coach.mintTx && (
-            <Row label="minted">
-              <Ext href={explorerTx(coach.mintTx)}>{short(coach.mintTx)} ↗</Ext>
-            </Row>
-          )}
-          <Row label="memory root">
-            <span className="break-all font-sans text-[10px] tracking-normal">{coach.memoryRoot || "—"}</span>
-          </Row>
-          <Row label="identity registry">
-            <Ext href={`${GALILEO.explorer}/address/${ERC8004_IDENTITY_REGISTRY}`}>ERC-8004 ↗</Ext>
-          </Row>
-        </dl>
-      </div>
+        <div className="mt-8 grid grid-cols-12 gap-x-8 gap-y-12">
+          <div className="col-span-12 md:col-span-7">
+            <h1 className="font-serif text-6xl leading-[0.9] text-navy md:text-8xl">{coach.name}</h1>
+            <p className="mt-8 max-w-md font-sans text-lg leading-relaxed text-navy">
+              An AI running coach that exists as an <em className="font-serif italic text-orange">intelligent NFT</em> on
+              0G Chain. Its memory is encrypted with a key only its athlete controls, and the hash of that memory is
+              anchored on-chain every time it reads a new run.
+            </p>
+            <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-ocean">
+              {PERSONALITY_LABEL[coach.personality] ?? coach.personality} · has read {runsRead}{" "}
+              {runsRead === 1 ? "run" : "runs"}. Nothing about those runs is published here: this page shows only what is
+              already on-chain.
+            </p>
+          </div>
 
-      <AskThisCoach tokenId={coach.tokenId} coachLabel={coach.name} />
+          <dl className="col-span-12 space-y-8 border-t border-navy pt-8 md:col-span-4 md:col-start-9">
+            <Row label="chain">
+              {GALILEO.name} · {GALILEO.chainId}
+            </Row>
+            <Row label="agent token">#{coach.tokenId}</Row>
+            {AGENT_NFT && (
+              <Row label="agent contract">
+                <Ext href={`${GALILEO.explorer}/address/${AGENT_NFT}`}>{short(AGENT_NFT)} ↗</Ext>
+              </Row>
+            )}
+            {coach.mintTx && (
+              <Row label="minted">
+                <Ext href={explorerTx(coach.mintTx)}>{short(coach.mintTx)} ↗</Ext>
+              </Row>
+            )}
+            <Row label="memory root">
+              <span className="break-all font-sans text-[10px] tracking-normal">{coach.memoryRoot || "—"}</span>
+            </Row>
+            <Row label="identity registry">
+              <Ext href={`${GALILEO.explorer}/address/${ERC8004_IDENTITY_REGISTRY}`}>ERC-8004 ↗</Ext>
+            </Row>
+          </dl>
+        </div>
 
-      <div className="mt-24 border-t border-navy/15 pt-10">
-        <Link
-          href="/coaches"
-          className="inline-block py-3 font-sans text-xs uppercase tracking-[0.2em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
-        >
-          Every coach, discoverable ↗
-        </Link>
-        <Link
-          href="/"
-          className="ml-10 inline-block py-3 font-sans text-xs uppercase tracking-[0.2em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
-        >
-          What is 0run ↗
-        </Link>
-      </div>
-    </main>
+        <AskThisCoach tokenId={coach.tokenId} coachLabel={coach.name} />
+
+        <div className="mt-24 border-t border-navy/15 pt-10">
+          <Link
+            href="/coaches"
+            className="inline-block py-3 font-sans text-xs uppercase tracking-[0.2em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
+          >
+            Every coach, discoverable ↗
+          </Link>
+          <Link
+            href="/"
+            className="ml-10 inline-block py-3 font-sans text-xs uppercase tracking-[0.2em] text-navy underline-offset-4 transition-colors duration-500 hover:text-orange hover:underline"
+          >
+            What is 0run ↗
+          </Link>
+        </div>
+      </main>
+      <SiteFooter />
+    </>
   );
 }
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteFooter } from "@/components/landing/site-footer";
+import { SiteHeader } from "@/components/landing/site-header";
 import { PageChrome } from "@/components/ui/page-chrome";
 
 export const metadata: Metadata = {
@@ -46,7 +47,8 @@ export default function TechnologyPage() {
   return (
     <main>
       <PageChrome />
-      <section className="mx-auto max-w-[1600px] px-8 pb-16 pt-32 md:px-16">
+      <SiteHeader />
+      <section className="mx-auto max-w-[1600px] px-8 pb-16 pt-24 md:px-16">
         <div className="mb-8 flex items-center gap-4">
           <span aria-hidden className="h-px w-12 bg-navy" />
           <span className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">
