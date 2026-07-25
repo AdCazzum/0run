@@ -111,6 +111,15 @@ describe("getAgentNonce", () => {
     });
     expect(await getAgentNonce("0x" + "ab".repeat(20))).toEqual({ error: "rpc down" });
   });
+
+  it("WORLD_AGENTBOOK_ADDRESS malformato → error, non throw", async () => {
+    vi.stubEnv("WORLD_AGENTBOOK_ADDRESS", "not-an-address");
+    _setAgentBookForTest(null); // Força realReader() al prossimo accesso
+    const res = await getAgentNonce(WALLET);
+    expect("error" in res && res.error.length > 0).toBe(true);
+    vi.unstubAllEnvs();
+    _setAgentBookForTest(null);
+  });
 });
 
 describe("agentBookAddress", () => {

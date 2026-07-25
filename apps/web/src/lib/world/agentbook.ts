@@ -188,9 +188,9 @@ export async function getAgentNonce(address: string): Promise<NonceLookup> {
   } catch {
     return { error: `indirizzo non valido: ${address}` };
   }
-  const r = (reader ??= realReader());
-  if (!r.getNextNonce) return { error: "nonce reader non disponibile" };
   try {
+    const r = (reader ??= realReader());
+    if (!r.getNextNonce) return { error: "nonce reader non disponibile" };
     const nonce = await withTimeout(r.getNextNonce(agent), LOOKUP_TIMEOUT_MS, "agentbook nonce timeout");
     return { nonce };
   } catch (e) {
