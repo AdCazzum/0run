@@ -22,8 +22,18 @@ const PILLARS = [
   },
   {
     promise: "Nobody reads your runs",
-    how: "Analysis runs on 0G Compute inside a trusted execution environment (TEE): the hardware itself guarantees that nobody — not the provider, not us — can peek at your data while the coach thinks. Inference takes about 20 seconds of measured latency, is billed on-chain against a provider address and request ID, and each response ships with a cryptographic attestation.",
+    how: "Analysis runs on 0G Compute, billed on-chain against a provider address and request ID that you can look up. Two paths, and we are precise about the difference: the effort score for every run is computed on a provider running inside a trusted execution environment and its response is cryptographically attested — verified, not asserted. The longer written report runs on a larger model whose response carries the same on-chain billing trace but no per-response attestation, and the interface says so instead of implying otherwise.",
     label: "TEE inference / 0G Compute",
+  },
+  {
+    promise: "Your coach has a name anyone can look up",
+    how: "Each coach gets its own ENS name — pedro.0run.eth — with text records that describe the agent and point back to the exact token that is its identity on 0G. Nothing is hard-coded: the name is resolved live over ENS every time it is shown, so if a record disappears the name disappears with it. The public directory works the same way round: it lists the agents that actually exist on-chain and resolves each one's identity through ENS, which makes coaches discoverable by name instead of by an internal database ID.",
+    label: "Agent identity / ENS (Sepolia)",
+  },
+  {
+    promise: "Real people, not bot swarms",
+    how: "Joining a run event requires a World ID proof of personhood, verified server-side because no World verifier exists on 0G. The proof's nullifier is recorded with a uniqueness constraint, so one real person can join a given event exactly once — no matter how many accounts they create. We are deliberate about what this proves and what it does not: anyone can create an event, so a claim means “a unique real human”, never “this person was there”. A coach can also declare itself human-coached, and the badge says self-declared, because World ID proves a unique human — not a qualification.",
+    label: "Proof of personhood / World ID",
   },
   {
     promise: "Check it yourself",
