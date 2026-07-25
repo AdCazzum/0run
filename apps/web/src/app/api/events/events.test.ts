@@ -27,6 +27,7 @@ vi.mock("drizzle-orm", async (orig) => {
     and: (...conds: any[]) => ({ __op: "and", conds }),
     desc: (col: any) => ({ __op: "desc", col }),
     count: () => ({ __op: "count" }),
+    isNull: (col: any) => ({ __op: "isNull", col }),
   };
 });
 
@@ -38,6 +39,10 @@ function colKey(table: any, col: any): string | undefined {
 function matches(table: any, row: any, cond: any): boolean {
   if (!cond) return true;
   if (cond.__op === "and") return cond.conds.every((c: any) => matches(table, row, c));
+  if (cond.__op === "isNull") {
+    const key = colKey(table, cond.col);
+    return key ? row[key] === null || row[key] === undefined : false;
+  }
   if (cond.__op === "eq") {
     const key = colKey(table, cond.col);
     return key ? row[key] === cond.val : false;
@@ -79,7 +84,8 @@ vi.mock("@/db", async () => {
                 returning: async () => {
                   const conflict = state.claims.some((c) => c.eventId === v.eventId && c.nullifierHash === v.nullifierHash);
                   if (conflict) return [];
-                  const row = { id: state.claims.length + 1, ...v };
+                  // createdAt is a column default in Postgres; the reclaim path reads it.
+                  const row = { id: state.claims.length + 1, createdAt: new Date(), ...v };
                   state.claims.push(row);
                   return [row];
                 },
@@ -87,6 +93,13 @@ vi.mock("@/db", async () => {
             };
           }
           return { returning: async () => [] };
+        },
+      }),
+      delete: (table: any) => ({
+        where: async (cond: any) => {
+          const rows = rowsOf(table);
+          const idx = rows.findIndex((r: any) => matches(table, r, cond));
+          if (idx !== -1) rows.splice(idx, 1);
         },
       }),
       update: (table: any) => ({
@@ -216,8 +229,43 @@ describe("POST /api/events/:id/claim", () => {
     expect(state.claims).toHaveLength(0);
   });
 
+  // Una riga di claim resta "prenotata" (txHash null) tra la verifica World ID e la
+  // conferma della tx dal wallet del claimant. Se l'utente abbandona il prompt, senza
+  // recupero resterebbe fuori dall'evento per sempre — stesso lockout gia' chiuso sul mint.
+  it("propria reservation non confermata e SCADUTA → reclamata, la co-firma viene riemessa", async () => {
+    const stale = new Date(Date.now() - 11 * 60_000); // oltre i 10 minuti
+    state.claims = [{ id: 1, eventId: 1, userId: 1, nullifierHash: "0xnul-1", txHash: null, createdAt: stale }];
+    vi.mocked(verifyWorldProof).mockResolvedValueOnce({ ok: true, nullifierHash: "0xnul-1", level: "proof_of_human" });
+    const { POST } = await import("./[id]/claim/route");
+    const res = await POST(claimReq({ idkitResult: IDKIT_RESULT }), { params: Promise.resolve({ id: "1" }) });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(signClaim)).toHaveBeenCalledTimes(1);
+    expect(state.claims).toHaveLength(1); // riga sostituita, non duplicata
+  });
+
+  it("propria reservation non confermata e FRESCA → 409 che dichiara il claim in corso", async () => {
+    state.claims = [{ id: 1, eventId: 1, userId: 1, nullifierHash: "0xnul-1", txHash: null, createdAt: new Date() }];
+    vi.mocked(verifyWorldProof).mockResolvedValueOnce({ ok: true, nullifierHash: "0xnul-1", level: "proof_of_human" });
+    const { POST } = await import("./[id]/claim/route");
+    const res = await POST(claimReq({ idkitResult: IDKIT_RESULT }), { params: Promise.resolve({ id: "1" }) });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/in corso/i);
+    expect(vi.mocked(signClaim)).not.toHaveBeenCalled();
+  });
+
+  it("reservation scaduta di un ALTRO utente → NON reclamata (sarebbe la via sybil che il nullifier chiude)", async () => {
+    const stale = new Date(Date.now() - 60 * 60_000);
+    state.claims = [{ id: 1, eventId: 1, userId: 99, nullifierHash: "0xnul-1", txHash: null, createdAt: stale }];
+    vi.mocked(verifyWorldProof).mockResolvedValueOnce({ ok: true, nullifierHash: "0xnul-1", level: "proof_of_human" });
+    const { POST } = await import("./[id]/claim/route");
+    const res = await POST(claimReq({ idkitResult: IDKIT_RESULT }), { params: Promise.resolve({ id: "1" }) });
+    expect(res.status).toBe(409);
+    expect(vi.mocked(signClaim)).not.toHaveBeenCalled();
+    expect(state.claims[0].userId).toBe(99); // intatta
+  });
+
   it("nullifier già usato per lo stesso evento → 409 dal vincolo UNIQUE, nessuna firma", async () => {
-    state.claims = [{ id: 1, eventId: 1, userId: 2, nullifierHash: "0xnul-1", txHash: "0xalready" }];
+    state.claims = [{ id: 1, eventId: 1, userId: 2, nullifierHash: "0xnul-1", txHash: "0xalready", createdAt: new Date() }];
     vi.mocked(verifyWorldProof).mockResolvedValueOnce({ ok: true, nullifierHash: "0xnul-1", level: "proof_of_human" });
     const { POST } = await import("./[id]/claim/route");
     const res = await POST(claimReq({ idkitResult: IDKIT_RESULT }), { params: Promise.resolve({ id: "1" }) });
@@ -245,7 +293,7 @@ describe("POST /api/events/:id/claim", () => {
 describe("PATCH /api/events/:id/claim", () => {
   beforeEach(() => {
     state.events = [{ id: 1, onchainId: "1", creatorUserId: 1, name: "A", startsAt: new Date(0), endsAt: new Date(Date.now() + 3_600_000), uri: null, txHash: "0xcreate" }];
-    state.claims = [{ id: 1, eventId: 1, userId: 1, nullifierHash: "0xnul-1", txHash: null }];
+    state.claims = [{ id: 1, eventId: 1, userId: 1, nullifierHash: "0xnul-1", txHash: null, createdAt: new Date() }];
   });
 
   it("registra il tx hash dopo che il claimant ha inviato la tx dal proprio wallet", async () => {

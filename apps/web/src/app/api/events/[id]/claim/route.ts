@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
 import { claims, events } from "@/db/schema";
 import { verifyWorldProof, type WorldIdKitResult } from "@/lib/world/verify";
 import { claimSignal } from "@/lib/world/signal";
 import { signClaim } from "@/lib/world/runEvents";
+
+// A claim reservation only lives between "World ID verified" and "the claimant's
+// wallet confirmed the on-chain tx". Generous enough for someone fumbling a wallet
+// prompt, short enough that an abandoned attempt does not lock them out of the event.
+const STALE_UNCONFIRMED_CLAIM_MS = 10 * 60_000;
 
 async function loadEvent(idParam: string) {
   const id = Number(idParam);
@@ -46,13 +51,51 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const verified = await verifyWorldProof(idkitResult, signal);
     if (!verified.ok) return NextResponse.json({ error: verified.error }, { status: 401 });
 
-    const inserted = await db
-      .insert(claims)
-      .values({ eventId: event.id, userId, nullifierHash: verified.nullifierHash, txHash: null })
-      .onConflictDoNothing({ target: [claims.eventId, claims.nullifierHash] })
-      .returning();
+    const insertReservation = () =>
+      db
+        .insert(claims)
+        .values({ eventId: event.id, userId, nullifierHash: verified.nullifierHash, txHash: null })
+        .onConflictDoNothing({ target: [claims.eventId, claims.nullifierHash] })
+        .returning();
+
+    let inserted = await insertReservation();
     if (inserted.length === 0) {
-      return NextResponse.json({ error: "already claimed" }, { status: 409 });
+      const [existing] = await db
+        .select()
+        .from(claims)
+        .where(and(eq(claims.eventId, event.id), eq(claims.nullifierHash, verified.nullifierHash)));
+
+      // The row is only a reservation until the claimant's wallet confirms the tx.
+      // If they abandoned the wallet prompt (or the tab died) the reservation would
+      // otherwise 409 them out of this event forever — the same permanent-lockout
+      // shape already fixed on the mint reservation. Reclaim it, but ONLY for the
+      // same user: letting anyone else take over an unconfirmed nullifier would
+      // reopen exactly the sybil path the nullifier exists to close.
+      const isOwnUnconfirmed = !!existing && existing.txHash === null && existing.userId === userId;
+      const ageMs = existing ? Date.now() - existing.createdAt.getTime() : 0;
+
+      if (isOwnUnconfirmed && ageMs > STALE_UNCONFIRMED_CLAIM_MS) {
+        await db.delete(claims).where(and(eq(claims.id, existing.id), isNull(claims.txHash)));
+        inserted = await insertReservation();
+      }
+
+      if (inserted.length === 0) {
+        if (existing?.txHash) {
+          return NextResponse.json(
+            { error: "already claimed", txHash: existing.txHash },
+            { status: 409 },
+          );
+        }
+        return NextResponse.json(
+          {
+            error: isOwnUnconfirmed
+              ? "un claim è già in corso: conferma la transazione nel wallet, oppure riprova tra qualche minuto"
+              : "questa proof è già stata usata per questo evento",
+            claimInProgressForMs: isOwnUnconfirmed ? ageMs : undefined,
+          },
+          { status: 409 },
+        );
+      }
     }
 
     const backendSig = await signClaim(event.onchainId, wallet, verified.nullifierHash);
