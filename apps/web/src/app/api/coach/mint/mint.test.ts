@@ -24,11 +24,23 @@ vi.mock("@/db", () => ({
         onConflictDoNothing: () => ({
           returning: async () => {
             if (dbState.coaches.has(v.userId)) return [];
-            const row = { id: dbState.coaches.size + 1, ...v };
+            // reservedAt is filled by the column default in Postgres, so the mock
+            // must supply it too — the conflict path reads it to age the reservation.
+            const row = { id: dbState.coaches.size + 1, reservedAt: new Date(), ...v };
             dbState.coaches.set(v.userId, row);
             return [{ id: row.id }];
           },
         }),
+      }),
+    }),
+    // The conflict path reads the existing row to tell "already minted" from
+    // "mint in flight" from "stale reservation to reclaim".
+    select: () => ({
+      from: () => ({
+        where: async () => {
+          const row = dbState.coaches.get(1);
+          return row ? [row] : [];
+        },
       }),
     }),
     update: () => ({
@@ -40,7 +52,12 @@ vi.mock("@/db", () => ({
       }),
     }),
     delete: () => ({
-      where: async () => { dbState.coaches.delete(1); },
+      // Deletes are scoped to the unconfirmed placeholder (tokenId === ""), so a
+      // confirmed coach must survive an abandon/reclaim attempt.
+      where: async () => {
+        const row = dbState.coaches.get(1);
+        if (row && row.tokenId === "") dbState.coaches.delete(1);
+      },
     }),
   },
 }));
@@ -114,10 +131,55 @@ describe("POST /api/coach/mint", () => {
   });
 
   it("reservation già presente (insert ON CONFLICT DO NOTHING → []) → 409, mint MAI tentato", async () => {
-    dbState.coaches.set(1, { id: 1, userId: 1, tokenId: "", name: "x", personality: "coach", memoryRoot: "", profileRoot: "", mintTx: "" });
+    dbState.coaches.set(1, { id: 1, userId: 1, tokenId: "", name: "x", personality: "coach", memoryRoot: "", profileRoot: "", mintTx: "", reservedAt: new Date() });
     const { POST } = await import("./route");
     const res = await POST(req());
     expect(res.status).toBe(409);
+    expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
+  });
+
+  it("SERVICE_ENC_KEY malformata → 500 e NESSUNA reservation creata (altrimenti lockout permanente)", async () => {
+    const saved = process.env.SERVICE_ENC_KEY;
+    process.env.SERVICE_ENC_KEY = "troppo-corta";
+    try {
+      const { POST } = await import("./route");
+      const res = await POST(req());
+      expect(res.status).toBe(500);
+      // Il bug riprodotto dalla review: la riga restava con tokenId "" e ogni
+      // tentativo successivo rispondeva 409 per sempre.
+      expect(dbState.coaches.has(1)).toBe(false);
+      expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
+    } finally {
+      process.env.SERVICE_ENC_KEY = saved;
+    }
+    // Config corretta: il retry deve poter mintare.
+    const { POST } = await import("./route");
+    expect((await POST(req())).status).toBe(200);
+  });
+
+  it("reservation scaduta (processo morto a metà mint) → reclamata, il mint procede", async () => {
+    const stale = new Date(Date.now() - 400_000); // oltre 3× il budget di 90s
+    dbState.coaches.set(1, {
+      id: 1, userId: 1, tokenId: "", name: "x", personality: "coach",
+      memoryRoot: "", profileRoot: "", mintTx: "", reservedAt: stale,
+    });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(dbState.coaches.get(1).tokenId).toBe("1");
+  });
+
+  it("reservation fresca → 409 che dichiara il mint in corso, distinto da 'già mintato'", async () => {
+    dbState.coaches.set(1, {
+      id: 1, userId: 1, tokenId: "", name: "x", personality: "coach",
+      memoryRoot: "", profileRoot: "", mintTx: "", reservedAt: new Date(),
+    });
+    const { POST } = await import("./route");
+    const res = await POST(req());
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/in corso/i);
+    expect(body.mintInProgressForMs).toBeGreaterThanOrEqual(0);
     expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
   });
 

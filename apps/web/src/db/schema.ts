@@ -33,6 +33,11 @@ export const coaches = pgTable("coaches", {
   // pipeline falls back to downloadDecrypted(memoryRoot) when null (the
   // re-sync path, where blobs are old and finalized).
   memoryCipher: text("memory_cipher"),
+  // When the row was created as a mint reservation. A row still holding the
+  // empty-string placeholders after a generous window means a mint died
+  // mid-flight (crash, restart, misconfiguration), so the next attempt may
+  // reclaim it instead of the user being locked out of minting forever.
+  reservedAt: timestamp("reserved_at").defaultNow().notNull(),
 });
 
 export const runs = pgTable("runs", {

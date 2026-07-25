@@ -56,6 +56,10 @@ export async function processRun(runId: number, userId: number, gpxXml: string, 
     currentStep = "update_memory";
     const [coach] = await db.select().from(coaches).where(eq(coaches.userId, userId));
     if (!coach) return fail("update_memory", "coach non trovato");
+    // An empty tokenId means the row is only a mint reservation (see the mint route):
+    // proceeding would try to read an empty memoryRoot and fail with a confusing
+    // storage error instead of naming the real cause.
+    if (!coach.tokenId) return fail("update_memory", "coach non ancora mintato: completa il mint prima di caricare una corsa");
 
     // AMENDMENT 1 (docs/0g-reality-check.md, measured 2026-07-25): a freshly
     // uploaded blob is not reliably downloadable from 0G Storage for 16+

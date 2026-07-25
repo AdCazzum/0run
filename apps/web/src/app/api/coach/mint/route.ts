@@ -9,7 +9,7 @@ import { prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { mintCoachOnChain, updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 const Body = z.object({
   name: z.string().min(1).max(40),
@@ -28,6 +28,12 @@ const Body = z.object({
 // nginx cuts proxied requests at 300s; budget well under that so the route
 // can respond honestly instead of the connection dying silently.
 const MINT_BUDGET_MS = 90_000;
+
+// A reservation older than this with its placeholders still in place cannot be a
+// live mint any more (the budget above is the longest a request can hold one), so
+// the next attempt reclaims it. Without this, a process kill between reserving and
+// finalizing locked the user out of minting permanently, with no recovery path.
+const STALE_RESERVATION_MS = MINT_BUDGET_MS * 3;
 
 type MintOutcome =
   | { status: "mint_failed"; error: string }
@@ -76,6 +82,17 @@ export async function POST(req: Request) {
   const { name, personality, userKeyHex } = parsed.data;
   const userKey = Buffer.from(userKeyHex, "hex");
 
+  // Resolve everything that can fail on configuration BEFORE reserving. serviceKey()
+  // throws synchronously when SERVICE_ENC_KEY is missing or malformed; doing it after
+  // the reservation left an orphaned row that made every later attempt answer 409
+  // forever, so a one-line env mistake became a permanent per-user lockout.
+  let svcKey: Buffer;
+  try {
+    svcKey = serviceKey();
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message ?? "configurazione server non valida" }, { status: 500 });
+  }
+
   try {
     // Reserve BEFORE minting on-chain. coaches.userId is unique, so this
     // INSERT ... ON CONFLICT DO NOTHING is the atomic gate: of any number of
@@ -84,41 +101,76 @@ export async function POST(req: Request) {
     // strings in the not-null tokenId/mintTx/memoryRoot/profileRoot columns
     // are the placeholder: a coaches row with an empty tokenId means
     // "reserved, mint not yet confirmed" — never "minted with an empty id".
-    const reserved = await db
-      .insert(coaches)
-      .values({ userId: user.userId, tokenId: "", name, personality, memoryRoot: "", profileRoot: "", mintTx: "" })
-      .onConflictDoNothing({ target: coaches.userId })
-      .returning({ id: coaches.id });
+    const insertReservation = () =>
+      db
+        .insert(coaches)
+        .values({ userId: user.userId, tokenId: "", name, personality, memoryRoot: "", profileRoot: "", mintTx: "" })
+        .onConflictDoNothing({ target: coaches.userId })
+        .returning({ id: coaches.id });
+
+    let reserved = await insertReservation();
     if (reserved.length === 0) {
-      return NextResponse.json({ error: "coach già mintato" }, { status: 409 });
+      const [existing] = await db.select().from(coaches).where(eq(coaches.userId, user.userId));
+      const isUnconfirmed = !!existing && existing.tokenId === "" && existing.mintTx === "";
+      const ageMs = existing ? Date.now() - existing.reservedAt.getTime() : 0;
+
+      if (isUnconfirmed && ageMs > STALE_RESERVATION_MS) {
+        // Reclaim a dead reservation. Both placeholders must still be empty: a row
+        // whose mint confirmed always carries a tokenId, so this can never delete a
+        // real coach. Residual risk, accepted and logged: if the database became
+        // unreachable in the instant between a confirmed on-chain mint and the
+        // finalize update, this reclaim allows a second mint. A rare extra NFT beats
+        // a user permanently unable to mint.
+        console.warn(`mint: reclaiming stale reservation for user ${user.userId} (age ${ageMs}ms)`);
+        await db.delete(coaches).where(and(eq(coaches.userId, user.userId), eq(coaches.tokenId, "")));
+        reserved = await insertReservation();
+      }
+
+      if (reserved.length === 0) {
+        // Three states used to answer with the same message, which hid the real
+        // situation from the user and from anyone debugging through the API.
+        if (isUnconfirmed) {
+          return NextResponse.json(
+            { error: "un mint è già in corso per questo account, riprova tra poco", mintInProgressForMs: ageMs },
+            { status: 409 },
+          );
+        }
+        return NextResponse.json(
+          { error: "coach già mintato", tokenId: existing?.tokenId, mintTx: existing?.mintTx },
+          { status: 409 },
+        );
+      }
     }
 
     const abandonReservation = async () => {
-      await db.delete(coaches).where(eq(coaches.userId, user.userId));
+      // Scoped to the unconfirmed placeholder so it can never delete a minted coach.
+      await db.delete(coaches).where(and(eq(coaches.userId, user.userId), eq(coaches.tokenId, "")));
     };
 
-    const { memory, profile } = initialMemory(name, personality);
-    const memCt = encryptJson(memory, userKey);
-    const profCt = encryptJson(profile, serviceKey());
-    const enc = (s: string) => new TextEncoder().encode(s);
-
-    // Roots are computed LOCALLY — pure merkle-tree math over the already
-    // AES-encrypted bytes, no network call — so the on-chain commitment
-    // never has to wait for the slow (sometimes 20+ minute, sometimes
-    // never-returning) 0G Storage upload. See docs/0g-reality-check.md and
-    // the prepareEncryptedUpload doc comment in lib/zerog/storage.ts.
+    // Everything between reserving and the chain call must be covered: any throw here
+    // used to escape to the outer catch, which does not clean up, stranding the row.
+    let memCt: string;
     let memPrep: Awaited<ReturnType<typeof prepareEncryptedUpload>>;
     let profPrep: Awaited<ReturnType<typeof prepareEncryptedUpload>>;
     try {
+      const { memory, profile } = initialMemory(name, personality);
+      memCt = encryptJson(memory, userKey);
+      const profCt = encryptJson(profile, svcKey);
+      const enc = (s: string) => new TextEncoder().encode(s);
+
+      // Roots are computed LOCALLY — pure merkle-tree math over the already
+      // AES-encrypted bytes, no network call — so the on-chain commitment
+      // never has to wait for the slow (sometimes 20+ minute, sometimes
+      // never-returning) 0G Storage upload. See docs/0g-reality-check.md and
+      // the prepareEncryptedUpload doc comment in lib/zerog/storage.ts.
       [memPrep, profPrep] = await Promise.all([
         prepareEncryptedUpload(enc(memCt), userKey),
-        prepareEncryptedUpload(enc(profCt), serviceKey()),
+        prepareEncryptedUpload(enc(profCt), svcKey),
       ]);
     } catch (e: any) {
-      // Local hashing failed before any chain call — the reservation is
-      // dead weight, free it for a clean retry.
+      // Nothing has touched the chain yet — the reservation is dead weight.
       await abandonReservation();
-      return NextResponse.json({ error: e.message ?? "impossibile calcolare i rootHash" }, { status: 500 });
+      return NextResponse.json({ error: e.message ?? "impossibile preparare la memoria cifrata" }, { status: 500 });
     }
 
     const dataDescription = `0g://storage/${memPrep.rootHash}`;
@@ -141,6 +193,8 @@ export async function POST(req: Request) {
     };
 
     const finalizeMinted = async (tokenId: string, txHash: string) => {
+      // Writing tokenId here is also what takes the row out of reach of the stale
+      // reclaim above, so it must be part of this single update, never a later one.
       await db.update(coaches)
         .set({ tokenId, mintTx: txHash, memoryRoot: memPrep.rootHash, profileRoot: profPrep.rootHash, memoryCipher: memCt })
         .where(eq(coaches.userId, user.userId));
