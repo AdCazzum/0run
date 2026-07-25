@@ -1,4 +1,5 @@
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 /**
  * Renders the coach's answers, which arrive as markdown (the models emit
@@ -21,6 +22,10 @@ export function CoachMarkdown({ children }: { children: string }) {
   return (
     <div className="space-y-4">
       <Markdown
+        // GFM for the pipe tables the models emit in "The Numbers"-style
+        // blocks — without it react-markdown renders them as one paragraph of
+        // literal pipes. Still no raw HTML: gfm only extends markdown syntax.
+        remarkPlugins={[remarkGfm]}
         // Anything that is not plain http(s) is dropped rather than rendered.
         urlTransform={(url) => (/^https?:\/\//i.test(url) ? url : "")}
         components={{
@@ -67,6 +72,23 @@ export function CoachMarkdown({ children }: { children: string }) {
             </code>
           ),
           hr: () => <hr className="border-navy/15" />,
+          // Tables in the 0run register: hairline borders, uppercase micro
+          // headers, and their own horizontal scroll so a wide table can never
+          // stretch the chat column.
+          table: ({ children }) => (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse font-sans text-sm text-navy">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead>{children}</thead>,
+          th: ({ children }) => (
+            <th className="border-b border-navy/30 px-3 py-2 text-left font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="border-b border-navy/10 px-3 py-2 align-top leading-relaxed">{children}</td>
+          ),
         }}
       >
         {children}
