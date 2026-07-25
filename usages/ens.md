@@ -2,6 +2,8 @@
 
 Every ENS integration in 0run, mapped to the exact code and to the on-chain evidence. ENS lives on **Sepolia** (chainId 11155111) — a separate, public testnet from the coach's own chain (0G Galileo, chainId 16602) — and that separation is declared everywhere it's visible, never hidden.
 
+**Prize fit in one paragraph:** ENS is 0run's identity, discovery **and authentication** layer for AI agents. Every coach gets a live-resolved subname with ENSIP-26 records; agent-to-agent consults are authenticated by nothing but a name resolution — the receiver reads the caller's `agent-signer` text record fresh and checks the EIP-191 signature against it (no tokens, no API keys, no peer table). The same resolution's `addr` is the accountable wallet the human-backing check runs against, so one ENS lookup carries both *who speaks* and *who answers for it*. Nothing is hard-coded, and that property is tested, not claimed.
+
 ## Live identity — every coach gets a name, resolved fresh, never hard-coded
 
 | What | Where |
@@ -10,8 +12,11 @@ Every ENS integration in 0run, mapped to the exact code and to the on-chain evid
 | Subname creation + record writes | `apps/web/src/lib/ens/subname.ts` — `assignSubname(label, owner, records)` |
 | Public, unauthenticated resolution bridge (resolution needs server-only env + a real RPC call, so it can't run in the browser) | `apps/web/src/app/api/ens/resolve/route.ts` |
 | Non-blocking assignment after every mint (fire-and-forget background lane, same discipline as the ERC-8004 step and the Storage upload) | `apps/web/src/app/api/coach/mint/route.ts` — `startBackgroundEns` |
-| Live badge in the UI, re-resolves on every mount, renders nothing if resolution comes back empty | `apps/web/src/components/coach/ens-badge.tsx`, wired into `apps/web/src/app/dashboard/page.tsx` |
+| Live badge in the UI, re-resolves on every mount, renders nothing if resolution comes back empty | `apps/web/src/components/coach/ens-badge.tsx`, wired into `apps/web/src/app/(app)/dashboard/page.tsx` |
 | Persisted pointer (nullable, additive) | `apps/web/src/db/schema.ts` — `coaches.ensName` |
+| **Inbound A2A authentication** — resolve the caller's name, read `agent-signer`, verify the EIP-191 signature against it; nothing else is trusted | `apps/web/src/app/api/coach/[tokenId]/a2a/route.ts:77-85` |
+| **Outbound A2A discovery** — the peer's consult endpoint comes from its `agent-endpoint[a2a]` record, resolved live; no hard-coded peer URLs anywhere | `apps/web/src/lib/a2a/consult.ts:36-39` |
+| **ENS `addr` as the accountable wallet** — the same resolution feeds the human-backing check: `lookupHuman(addr)` on World's AgentBook decides whether a unique human stands behind the name (see `usages/world.md`) | `apps/web/src/app/api/coach/[tokenId]/a2a/route.ts:87-93` |
 
 Deployed identity, verified live: [`pedro.0run.eth`](https://sepolia.app.ens.domains/pedro.0run.eth) resolves to `0x7AEa10Ebc47CC8F2eb359B2e19a6286Ef36A59e6` (the coach's own embedded wallet). Assignment tx: [`0xefe5ae1cc43feaa045ff5227b6a59aa0e32156fff8ff5960febcfc5fb57278e2`](https://sepolia.etherscan.io/tx/0xefe5ae1cc43feaa045ff5227b6a59aa0e32156fff8ff5960febcfc5fb57278e2) on Sepolia.
 
