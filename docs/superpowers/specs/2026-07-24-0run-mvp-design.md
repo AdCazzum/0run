@@ -35,7 +35,7 @@ Otto funzionalità, un solo percorso demo che tocca ogni deliverable:
 
 ### UI
 
-Tutta la UI segue il design system **Luxury/Editorial** definito in [`2026-07-24-0run-design-system.md`](./2026-07-24-0run-design-system.md) (vincolante: palette 0run a 5 colori — cream/navy/peach/ocean/orange — tipografia Playfair+Inter, radius 0, motion cinematografico, grayscale sulle immagini, griglia asimmetrica).
+Tutta la UI segue il design system definito in [`2026-07-24-0run-design-system.md`](./2026-07-24-0run-design-system.md) (vincolante: palette 0run a 5 colori — cream/navy/peach/ocean/orange — tipografia Playfair+Inter, due registri (editoriale pubblico / app post-login), motion ≥500ms, grayscale sulle immagini). Quel documento è stato riscritto dal codice il 2026-07-25: la regola "radius 0 ovunque" non è più in vigore.
 
 ### Struttura repo (monorepo)
 

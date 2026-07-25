@@ -17,7 +17,7 @@
 - Modelli inferenza: MAI i claude-*/gpt-* del router (senza attestazione TEE). Primario `glm-5.2`, fallback `0gm-1.0-35b-a3b`; catalogo verificato a runtime da `GET /v1/models`.
 - **Mai fallback su dati finti** (i mock squalificano): ogni operazione 0G ritorna una receipt (`ok: false` + errore), mai un valore inventato.
 - La chiave utente (derivata da firma wallet) NON viene mai persistita server-side: arriva per-richiesta e vive solo in memoria.
-- UI: design system Luxury/Editorial vincolante (`docs/superpowers/specs/2026-07-24-0run-design-system.md`): palette cream `#EFEFD0` / navy `#004E89` / peach `#F7C59F` / ocean `#1A659E` / orange `#FF6B35`; radius 0; Playfair Display + Inter; transizioni ≥500ms (immagini 1500-2000ms); grayscale sulle immagini.
+- UI: design system Luxury/Editorial vincolante (`docs/superpowers/specs/2026-07-24-0run-design-system.md`): palette cream `#EFEFD0` / navy `#004E89` / peach `#F7C59F` / ocean `#1A659E` / orange `#FF6B35`; Playfair Display + Inter; transizioni ≥500ms (immagini 1500-2000ms); grayscale sulle immagini. NOTA STORICA: questo piano fu scritto quando valeva "radius 0 ovunque"; la regola è stata superata dall'implementazione e la spec riscritta il 2026-07-25.
 - Postgres solo in Docker; nessun SaaS oltre Privy.
 - Test con vitest (`npx vitest run <file>`); i test che toccano 0G reale sono gated da `RUN_ZG_INTEGRATION=1`.
 

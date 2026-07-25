@@ -1,86 +1,88 @@
-# 0run — Design System UI: Luxury / Editorial
+# 0run — Design System UI
 
-**Vincolante per tutta la UI di `apps/web`.** Fornito da Ivan il 2026-07-24; palette colori custom di Ivan (sostituisce il monocromo+oro dello stile originale — le *regole d'uso* dei colori restano identiche, cambiano i valori). Ogni componente, pagina e micro-interazione segue queste regole; in caso di dubbio, vince questo documento.
+**Vincolante per tutta la UI di `apps/web`.** Riscritto il 2026-07-25 **dal codice in produzione**, non viceversa: la versione precedente descriveva un sistema "Luxury/Editorial" con radius 0 ovunque che l'implementazione ha superato, e la divergenza ha già costretto un implementer a scegliere quale fonte seguire. Se in futuro codice e questo documento divergono di nuovo, si aggiorna il documento **dopo** aver deciso consapevolmente, non lo si lascia mentire.
 
-## Filosofia
+## Due registri, non uno
 
-Eleganza per sottrazione: riviste di moda high-end (Vogue, Kinfolk) e brand luxury (Aesop, Hermès). Tipografia impeccabile, spazio negativo generoso, motion lento e cinematografico, asimmetria intenzionale, profondità per ombre sottili. Vibe: sofisticato, senza tempo, costoso, sereno, curato, editoriale, tattile. Il lusso non aggiunge decorazione — rimuove il superfluo e perfeziona ciò che resta.
+Il prodotto ha due superfici con obiettivi diversi, e questo è deliberato:
 
-## Token
-
-### Colori (palette 0run)
-
-| Token | Valore | Uso |
+| | **Registro editoriale** (pubblico) | **Registro app** (post-login) |
 |---|---|---|
-| Background | `#EFEFD0` (Cream) | sfondo pagina — mai bianco puro |
-| Foreground | `#004E89` (Deep Navy) | testo primario, bordi, sezioni scure |
-| Muted BG | `#F7C59F` (Peach) | superfici elevate, sezioni alternate, stati disabled |
-| Muted FG | `#1A659E` (Ocean Blue) | testo secondario, caption, metadata, link |
-| Accent | `#FF6B35` (Vivid Orange) | SOLO hover, underline, focus, micro-dettagli, badge — mai aree grandi |
-| Accent FG | `#EFEFD0` (Cream) | testo su sfondi navy o orange |
+| Route | `/`, `/technology`, `/coach/[tokenId]`, `/coaches`, `/events` | tutto sotto `app/(app)/`: dashboard, mint, upload, runs, coach |
+| Obiettivo | farsi ricordare: è la vetrina, la prima cosa che vede un giudice | farsi usare: è un'app da telefono, in mano mentre sudi |
+| Chrome | `<PageChrome />` — rumore di carta al 2% + 4 gridline verticali navy/20 | `<AppShell />` — barra superiore sticky + tab bar inferiore fissa |
+| Scala tipografica | estrema: hero `text-6xl`→`text-9xl`, `leading-[0.9]` | contenuta: `text-2xl`→`text-4xl` per i titoli |
+| Superfici | trasparenti, definite da linee e bordi singoli | card morbide traslucide, ombre leggere |
+| Composizione | griglia 12 colonne asimmetrica, offset di colonna, mai centrata | verticale, phone-first, una colonna che scala |
 
-- Bordi/divider: `#004E89` al 10-20% di opacità.
-- Sezioni scure: palette invertita (`#004E89` bg, `#EFEFD0` testo, `#F7C59F` muted al 60-80%).
-- L'orange eredita TUTTE le regole del gold originale: è la ricompensa dell'interazione (hover, focus, dettagli), mai il colore dominante di una superficie.
+**La cucitura nota**: i componenti condivisi (`Button`, `Card`, `Input`) hanno lo stile morbido del registro app e vengono usati **anche** nelle pagine editoriali — per esempio le tre card di "how it works" nella landing sono `rounded-2xl`. È accettato: il contrasto è tenue e il costo di una variante editoriale non si giustifica. Se un giorno stona, si aggiunge una variante a `Card`, non si irrigidisce tutto.
 
-### Tipografia (l'elemento più critico)
+## Token — l'unico universo di colore
 
-- **Headings**: "Playfair Display" (serif alto contrasto) — Regular 400, Light 300 per contrasto, Italic per enfasi.
-- **Body/UI**: "Inter" — Medium 500 per bottoni/link, Regular 400 body.
-- **Scala**: hero `text-6xl`→`text-9xl` con `leading-[0.9]`; sezioni `text-5xl`→`text-7xl`; card `text-3xl`/`text-4xl`; body `text-base`/`text-lg` con `leading-relaxed`; overline `text-xs` UPPERCASE; micro `text-[10px]`.
-- **Tracking**: label uppercase `tracking-[0.25em]`–`[0.3em]`; bottoni `tracking-[0.2em]`; headline `tracking-tight`; body default (mai modificato).
+```css
+--color-cream:  #EFEFD0   /* sfondo pagina */
+--color-navy:   #004E89   /* testo primario, bordi */
+--color-peach:  #F7C59F   /* superfici elevate, stati evidenziati */
+--color-ocean:  #1A659E   /* testo secondario, caption, metadata */
+--color-orange: #FF6B35   /* accento: hover, focus, enfasi, marker */
+```
 
-### Forme, bordi, ombre
+Definiti in `apps/web/src/app/globals.css` sotto `@theme`. **Nessun valore hex nei componenti** — si usano le classi token (`bg-cream`, `text-navy`, `border-orange`…). Unica eccezione legittima: valori passati a librerie terze che non leggono Tailwind (la polyline di Leaflet in `run-map.tsx`, con una costante nominata e commentata).
 
-- **Border-radius: 0px ovunque.** Precisione architetturale, nessuna eccezione.
-- Bordi sempre `1px`; spesso solo un lato (`border-t`); divider come `h-px`/`w-px`.
-- Ombre sottilissime, mai dure: card `shadow-[0_2px_8px_rgba(0,0,0,0.02)]` → hover `[0_8px_24px_rgba(0,0,0,0.06)]`; hero image `[0_8px_32px_rgba(0,0,0,0.12)]`; bottoni primari `[0_4px_16px_rgba(0,0,0,0.15)]` → hover più profonda. Inner border su immagini: `shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04-0.08)]`.
-- **Noise di carta**: overlay SVG fractal noise al 2% su tutta la pagina (fixed, pointer-events-none, z-50).
+**Bianco**: ammesso solo come *superficie traslucida* (`bg-white/40`, `bg-white/45`, `bg-white/50`) sopra il cream, mai come sfondo pieno di pagina. È ciò che dà alle card l'aspetto morbido senza introdurre un sesto colore.
 
-### Immagini
+**Arancione**: accento, non superficie. Hover, focus, marker, parole in italic dentro headline grandi, badge. Mai un riempimento ampio. **Attenzione contrasto**: orange su cream è ~2,4:1 — vietato per testo piccolo statico; ammesso su testo grande, elementi decorativi e stati hover. Il testo piccolo è navy (~7,3:1, AAA) oppure ocean (~5,3:1, AA).
 
-Default **grayscale**, colore al hover con transizione `duration-[1500ms]`–`[2000ms]` + `group-hover:scale-105` + ombra che si approfondisce. Aspect ratio verticali (`aspect-[3/4]`, `aspect-[4/5]`), immagini grandi e prominenti. Con questa palette il reveal a colori è ancora più forte: il grayscale di default resta obbligatorio.
+## Tipografia
 
-### Griglia
+- **Playfair Display** per i titoli (`font-serif`), **Inter** per corpo e UI (`font-sans`), caricati con `next/font/google` in `app/layout.tsx` come variabili CSS.
+- **Playfair non ha il peso 300**: Google Fonts non lo pubblica (né statico né come minimo dell'asse variabile) e i tipi generati da `next/font` lo rifiutano. Pesi disponibili: 400 normale e 400 italic. Non riproporlo.
+- Inter: 400 e 500 (il 500 per bottoni e label).
+- **Micro-label**: `text-xs` o `text-[10px]`, MAIUSCOLO, `tracking-[0.25em]`–`[0.3em]`. Sono la firma tipografica del prodotto e valgono in entrambi i registri.
+- **Headline**: `leading-[0.9]` o `leading-tight`, con una parola in `italic text-orange` come enfasi. Corpo: `leading-relaxed`, tracking di default (il corpo non si tocca mai).
+- Testo allineato a sinistra, mai giustificato.
 
-12 colonne, container `max-w-[1600px]`, padding `px-8`/`px-16`. **4 gridline verticali visibili** (fixed, `w-px`, `bg-[#004E89]/20`, pointer-events-none) ai bordi delle colonne. Composizione **asimmetrica**: 7/5, offset `col-start-2`/`col-start-6`, allineamento bottom-left — mai tutto centrato, mai 50/50.
+## Componenti condivisi (valori reali)
 
-## Componenti
+**Button** (`components/ui/button.tsx`) — `h-12`, `rounded-xl`, `px-8`, uppercase `text-xs tracking-[0.2em]`, focus ring navy/60 con offset su cream.
+- `primary`: `bg-navy` testo cream, `shadow-sm` → `hover:shadow-md`. **Conserva l'animazione firma**: un layer arancione che entra da sinistra (`-translate-x-full` → `translate-x-0`, `duration-500`, easing `cubic-bezier(0.25,0.46,0.45,0.94)`), con il testo sopra via z-index. Questa non si tocca: è l'unico gesto di movimento riconoscibile del prodotto.
+- `secondary`: bordo `navy/25` su `bg-white/40`, hover riempie di navy.
+- `link`: solo testo, hover arancione con underline.
 
-- **Button primary**: `bg-[#004E89]` testo cream, `h-12`, `px-8+`, uppercase `text-xs tracking-[0.2em]`; hover = layer orange (`#FF6B35`) che slitta da sinistra (`translate-x-[-100%]` → `0`, `duration-500`, `cubic-bezier(0.25,0.46,0.45,0.94)`, span interni con z-index, testo cream sopra).
-- **Button secondary**: trasparente + `border border-[#004E89]` testo navy; hover riempie di navy, testo inverte a cream, `duration-500`.
-- **Card**: sfondo trasparente, solo `border-t` navy, padding `p-8`/`p-12`, hover appena percettibile (`hover:bg-[#F7C59F]/20`). Card in evidenza: `border-t-4 border-t-[#FF6B35]`.
-- **Input**: solo `border-b` navy, sfondo trasparente, `h-12`, focus → bordo orange, nessun ring/glow. Placeholder in **Playfair italic** ocean blue.
-- **Timing**: interazioni ≥500ms, colori 700ms, immagini 1500-2000ms, easing `ease-out` o la cubic-bezier custom — mai `ease-in`/`ease-in-out`, niente snap.
+**Card** (`components/ui/card.tsx`) — `rounded-2xl`, `p-6`/`md:p-8`, `shadow-sm` → `hover:shadow-md`, `duration-500`. Default: bordo `navy/10` su `bg-white/45`. `featured`: bordo `orange/70` su `bg-peach/30`.
 
-## Bold factor (firma riconoscibile, obbligatori)
+**Input** (`components/ui/input.tsx`) — `h-12`, `rounded-xl`, bordo `navy/20` su `bg-white/50`, `shadow-sm`, focus bordo arancione + `ring-2 ring-orange/25`, `duration-300`. **Placeholder in Playfair italic** color ocean: è il dettaglio che tiene insieme i due registri anche nei form.
 
-1. Label verticali `writing-mode: vertical-rl` (decorative, desktop only) — es. "0run / Vol. 01".
-2. Drop cap Playfair `text-7xl` `float-left` sul paragrafo introduttivo.
-3. Headline con *parole in italic orange* alternate ("The *Coach*", "Every *Run*").
-4. Grayscale→colore su tutte le immagini (incluse mappe delle corse dove sensato).
-5. Gridline verticali visibili (navy al 20%).
-6. Orange slide sui bottoni primari.
-7. Linee orizzontali decorative (`h-px w-8/w-12`) prima delle label.
-8. Scala tipografica estrema (hero enorme + micro-label).
-9. Ombre stratificate soft.
-10. Interazioni coordinate multi-layer (border orange + padding + avatar a colori sui blocchi tipo testimonial/crew).
+Le textarea seguono lo stile dell'Input (non esiste una primitiva dedicata).
 
-## Anti-pattern (vietati)
+## Movimento
 
-Rounded corners · ombre dure · #000/#FFF puri come testo/sfondo · animazioni <500ms · colori fuori palette (i 5 token sono l'universo intero) · tutto centrato · spaziatura stretta · font decorativi oltre Playfair+Inter · icone prominenti (solo lucide-react, stroke sottile, rare) · orange dominante · immagini piccole · tracking largo sul body · immagini senza grayscale · mobile "generico" (l'estetica si mantiene, scalata: `py-20`, `text-5xl` hero, stack verticale).
+- Default **500ms** su colori, ombre, trasformazioni; 300ms sugli input (reattività percepita nei form); **1500–2000ms** sul reveal grayscale→colore delle immagini.
+- Easing `ease-out` o la cubic-bezier custom. Mai `ease-in`/`ease-in-out`, mai snap.
+- **`prefers-reduced-motion`** è gestito globalmente in `globals.css`: durate a 0, transform annullati, i cambi di colore restano. Non reintrodurre movimento che lo ignori.
 
-## Accessibilità (contrasti verificati per questa palette)
+## Immagini e mappe
 
-- Navy `#004E89` su Cream `#EFEFD0`: **~7.3:1** — AAA, testo primario ok.
-- Ocean Blue `#1A659E` su Cream: **~5.3:1** — AA, ok per testo secondario.
-- Cream su Navy (sezioni scure): **~7.3:1** — AAA.
-- Orange `#FF6B35` su Navy: **~3:1** — solo testo grande/elementi UI, non testo piccolo.
-- Orange su Cream: **~2.4:1** — SOLO elementi decorativi/grandi (linee, badge, italic in headline grandi); mai testo piccolo orange su cream: per il testo si usa navy o ocean blue.
-- Focus visibile sempre (ring-1 navy o bordo orange, mai rimosso). `prefers-reduced-motion`: durate a 0, mantenere i cambi colore, togliere transform/scale. Touch target ≥48px (`h-12`). Testo allineato a sinistra, mai giustificato.
+Grayscale di default, colore al hover con `duration-[1500ms]`, spesso con `group-hover:scale-105` e ombra che si approfondisce. Aspect ratio verticali (`aspect-[3/4]`, `aspect-[4/5]`). La mappa del percorso (`run-map.tsx`) segue lo stesso trattamento e mostra uno stato vuoto onesto quando la corsa non ha polyline — mai una mappa finta.
 
-## Note d'implementazione per 0run
+## Elementi di firma da mantenere
 
-- Tailwind CSS v4, token centralizzati in config (mai valori sparsi one-off); Google Fonts Playfair Display + Inter; lucide-react parco.
-- Componenti base da costruire subito: `Button` (primary/secondary/link), `Card` (border-top + shadow evolution), `Input` (underline + placeholder italic), overlay noise + gridlines nel layout root.
-- Applicazione ai momenti chiave dell'app: la **pipeline a stati dell'upload** è una sequenza editoriale (label uppercase, linee decorative, spunte lente in orange); la **mappa del percorso** entra in grayscale e prende colore; il **badge "TEE verified"** è un micro-dettaglio orange; il **report del coach** usa drop cap e headline con italic orange; le **card corsa** usano aspect verticali e border-top; le **personalità del coach** (Pacer/Coach/Drill Sergeant) possono usare Muted BG peach per differenziare le card in selezione.
+1. Linee decorative `h-px w-8`/`w-12` prima delle micro-label maiuscole.
+2. Parole in `italic text-orange` dentro le headline.
+3. Label verticali `writing-mode: vertical-rl` (decorative, solo desktop) nelle pagine editoriali.
+4. Drop cap Playfair (`first-letter:float-left first-letter:text-7xl`) sul paragrafo introduttivo di manifesto e report.
+5. Gridline verticali + rumore di carta nelle pagine pubbliche (`PageChrome`).
+6. L'animazione arancione del bottone primario.
+7. Numeri e passi in serif italic arancione (`01`, `02`, `03`).
+
+## Accessibilità
+
+Contrasti verificati: navy su cream ~7,3:1 (AAA); ocean su cream ~5,3:1 (AA); cream su navy ~7,3:1 (AAA); orange su cream ~2,4:1 (**solo decorativo o testo grande**). Focus sempre visibile — i componenti condivisi portano un ring navy con offset; non rimuoverlo, non sostituirlo con `outline: none` nudo. Touch target ≥48px (`h-12`, oppure `py-3` sui link testuali). `prefers-reduced-motion` rispettato.
+
+## Onestà nella copy (regola di prodotto, non di stile)
+
+La UI non afferma ciò che non abbiamo verificato. Casi concreti già in codice: il badge di attestazione mostra "TEE verified" **solo** se `verifiedTee === "true"`, altrimenti dice "attestation not available"; il badge coach dice **"autodichiarato"**, mai "verified"; la mappa mostra uno stato vuoto invece di una mappa vuota; i numeri citati sono misurati (vedi `docs/0g-reality-check.md`), mai stimati. La home parla di **benefici** al pubblico e manda la tecnologia su `/technology`.
+
+## Anti-pattern
+
+Colori fuori dai cinque token · hex nei componenti · bianco come sfondo pieno · testo piccolo arancione su cream · animazioni sotto i 300ms o che ignorano `prefers-reduced-motion` · font oltre Playfair e Inter · icone prominenti (lucide-react, stroke sottile, rare) · arancione come superficie · immagini senza grayscale · tracking largo sul corpo del testo · mobile come stack generico invece dell'estetica scalata · badge o copy che affermano verifiche non avvenute.

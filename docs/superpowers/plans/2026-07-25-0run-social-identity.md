@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Riusare tutto il ciclo core: `requireUser`, il design system (palette cream/navy/peach/ocean/orange, radius 0, Playfair+Inter, transizioni ≥500ms), il receipt pattern, `git commit <paths>` (indice condiviso).
+- Riusare tutto il ciclo core: `requireUser`, il design system (palette cream/navy/peach/ocean/orange, Playfair+Inter, transizioni ≥500ms, due registri — vedi la spec, riscritta dal codice il 2026-07-25: niente radius 0 globale), il receipt pattern, `git commit <paths>` (indice condiviso).
 - ChainId **16602** solo da `GALILEO` in `@0run/shared`. ENS su **Sepolia** (chainId 11155111) — rete separata, va dichiarata come tale ai giudici, non nascosta.
 - World ID: **cloud-verify obbligatorio lato server** con check `success === true` **strict**. Nessuna backdoor di bypass (il repo di riferimento `provenance-miniapp` ne aveva una: non copiarla). Non loggare mai le proof.
 - **Signal binding**: il signal della proof World è `hash(eventId + wallet)` — la proof è legata a quel claim specifico e non è riusabile altrove.
