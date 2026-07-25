@@ -24,8 +24,18 @@ export function buildProfile(memory: CoachMemory): CoachProfile {
   });
 }
 
-/** Cifra e carica entrambi gli strati. NB: il testo cifrato va dentro un envelope JSON in bytes. */
-export async function persistMemory(memory: CoachMemory, userKey: Buffer): Promise<{ memory: StorageReceipt; profile: StorageReceipt }> {
+/**
+ * Cifra e carica entrambi gli strati. NB: il testo cifrato va dentro un envelope JSON in bytes.
+ *
+ * Ritorna anche `memoryCipher`, l'envelope AES della memoria (stesso output di
+ * encryptJson(memory, userKey)) così i chiamanti possono metterlo in cache
+ * (coaches.memoryCipher) senza ri-cifrare — ri-cifrare produrrebbe un
+ * ciphertext diverso per lo stesso plaintext (IV/nonce random), innocuo ma
+ * inutile.
+ */
+export async function persistMemory(
+  memory: CoachMemory, userKey: Buffer,
+): Promise<{ memory: StorageReceipt; profile: StorageReceipt; memoryCipher: string }> {
   const memCt = encryptJson(memory, userKey);
   const profCt = encryptJson(buildProfile(memory), serviceKey());
   const enc = (s: string) => new TextEncoder().encode(s);
@@ -33,5 +43,5 @@ export async function persistMemory(memory: CoachMemory, userKey: Buffer): Promi
     uploadEncrypted(enc(memCt), userKey),      // doppia protezione: envelope AES nostro + aes256 SDK
     uploadEncrypted(enc(profCt), serviceKey()),
   ]);
-  return { memory: memReceipt, profile: profReceipt };
+  return { memory: memReceipt, profile: profReceipt, memoryCipher: memCt };
 }

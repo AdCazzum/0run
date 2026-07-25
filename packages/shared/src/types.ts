@@ -16,8 +16,34 @@ export const RunStatsSchema = z.object({
 });
 export type RunStats = z.infer<typeof RunStatsSchema>;
 
+// Shape of a completed coach report, duplicated (not imported) from
+// apps/web/src/lib/coach/prompts.ts's ReportSchema on purpose: that schema
+// lives in the app layer (it drives inference/UI), while this one only
+// exists to describe what a RunSummary embeds in the manifest. Keeping them
+// separate avoids a shared -> app dependency; they are kept structurally
+// identical by convention.
+export const RunReportSchema = z.object({
+  headline: z.string(),
+  analysis: z.string(),
+  comparison: z.string(),
+  advice: z.array(z.string()),
+});
+export type RunReport = z.infer<typeof RunReportSchema>;
+
 export const RunSummarySchema = RunStatsSchema.extend({
   reportHeadline: z.string().default(""),
+  // SSOT amendment (2026-07-25, docs/superpowers/specs/2026-07-25-storage-ssot-spec.md):
+  // the encrypted CoachMemory is the user's complete manifest, so the DB is
+  // rebuildable from Storage + chain alone. gpxRoot/gpxContentHash are always
+  // known synchronously when the pipeline appends a run (right after the GPX
+  // upload). report is nullable: the pipeline appends+persists the run BEFORE
+  // running inference (memory has to exist to build the report prompt), so
+  // the just-appended entry's report is not yet known at that point and is
+  // stored as null — a known, accepted gap for this run only (not backfilled
+  // retroactively in this task).
+  gpxRoot: z.string(),
+  gpxContentHash: z.string(),
+  report: RunReportSchema.nullable(),
 });
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 

@@ -6,6 +6,7 @@ import { buildReportMessages, ReportSchema } from "./prompts";
 const run = {
   distanceKm: 5, durationSec: 1500, avgPaceSecKm: 300, elevationGainM: 40,
   splitsSecKm: [300, 298, 302, 301, 299], avgHr: 150, startedAt: "2026-07-20T07:30:00.000Z", reportHeadline: "",
+  gpxRoot: "0xfixturegpxroot", gpxContentHash: "0x" + "ab".repeat(32), report: null,
 };
 
 describe("memory", () => {

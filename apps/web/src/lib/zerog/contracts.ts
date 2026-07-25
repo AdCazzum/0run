@@ -31,3 +31,17 @@ export async function updateRegistry(tokenId: string, memoryRoot: string, profil
   const tx = await registry().update(tokenId, memoryRoot, profileRoot);
   return (await tx.wait()).hash;
 }
+
+// 0G Storage rootHashes are already 32-byte hex, so zeroPadValue is a no-op
+// on real data. It DOES throw on anything that isn't valid BytesLike (e.g.
+// the short mock rootHashes used in tests, or any future non-hex root
+// representation) — fall back to the raw value rather than 500ing the caller.
+// Shared by the mint route and the run-upload pipeline, both of which pass
+// storage rootHashes to updateRegistry.
+export function toBytes32(value: string): string {
+  try {
+    return ethers.zeroPadValue(value, 32);
+  } catch {
+    return value;
+  }
+}

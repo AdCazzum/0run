@@ -21,6 +21,18 @@ export const coaches = pgTable("coaches", {
   memoryRoot: text("memory_root").notNull(),
   profileRoot: text("profile_root").notNull(),
   mintTx: text("mint_tx").notNull(),
+  // Cache of the SAME AES envelope string produced by encryptJson(memory,
+  // userKey) — ciphertext only, never plaintext, so a DB dump alone still
+  // leaks nothing without the user's wallet signature. 0G Storage remains
+  // the durable, verifiable, on-chain-anchored source of truth (memoryRoot);
+  // this column exists because a freshly uploaded blob is not reliably
+  // downloadable from 0G Storage for 16+ minutes (measured against Galileo
+  // testnet, see docs/0g-reality-check.md) — reading it back on the hot path
+  // (e.g. a user's first run right after minting) would fail every time.
+  // Nullable because rows minted before this column existed predate it; the
+  // pipeline falls back to downloadDecrypted(memoryRoot) when null (the
+  // re-sync path, where blobs are old and finalized).
+  memoryCipher: text("memory_cipher"),
 });
 
 export const runs = pgTable("runs", {
