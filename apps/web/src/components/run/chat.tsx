@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { useUserKey } from "@/lib/client/useUserKey";
 import { CoachMarkdown } from "@/components/coach/coach-markdown";
 
-type Turn = { role: "user" | "assistant"; content: string };
+type Consult = { to: string; toTokenId: string | null; question: string; reply: string; coachName: string };
+type Turn = { role: "user" | "assistant"; content: string; consult?: Consult };
 
 /**
  * One chat implementation for both surfaces. With `runId` the API pins that run
@@ -38,7 +39,7 @@ export function Chat({ runId }: { runId?: number }) {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-      setTurns((t) => [...t, { role: "assistant", content: body.reply }]);
+      setTurns((t) => [...t, { role: "assistant", content: body.reply, consult: body.consult }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "the coach could not answer");
     } finally {
@@ -62,16 +63,44 @@ export function Chat({ runId }: { runId?: number }) {
               {turn.content}
             </p>
           ) : (
-            // The coach answers in markdown; the athlete's own message stays plain
-            // text — they typed it, and rendering user input as markdown would let a
-            // stray character reflow the thread.
-            <div key={i} className="max-w-xl border-l border-navy pl-6">
-              <CoachMarkdown>{turn.content}</CoachMarkdown>
+            <div key={i} className="max-w-xl space-y-4">
+              {turn.consult && (
+                // The A2A moment: the athlete's coach consulted a colleague,
+                // discovered and verified via its ENS identity. Visually
+                // distinct from user/coach bubbles on purpose — this is a
+                // conversation between two agents, shown, not summarized.
+                <div className="rounded-2xl border border-dashed border-ocean/60 p-4">
+                  <p className="mb-3 font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
+                    consulto tra coach ·{" "}
+                    {turn.consult.toTokenId ? (
+                      <a className="underline" href={`/coach/${turn.consult.toTokenId}`}>{turn.consult.to}</a>
+                    ) : (
+                      turn.consult.to
+                    )}{" "}
+                    · verificato via ENS
+                  </p>
+                  <p className="mb-2 font-sans text-sm italic text-navy/80">→ {turn.consult.question}</p>
+                  <div className="flex items-start gap-3">
+                    {turn.consult.toTokenId && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`/api/coach/${turn.consult.toTokenId}/avatar`} alt="" className="h-8 w-8 rounded-full object-cover" />
+                    )}
+                    <p className="font-sans text-sm leading-relaxed text-navy">
+                      <span className="font-semibold">{turn.consult.coachName}:</span> {turn.consult.reply}
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="border-l border-navy pl-6">
+                <CoachMarkdown>{turn.content}</CoachMarkdown>
+              </div>
             </div>
           ),
         )}
         {busy && (
-          <p className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">the coach is thinking…</p>
+          <p className="font-sans text-xs uppercase tracking-[0.3em] text-ocean">
+            the coach is thinking — it may consult a fellow coach via ENS…
+          </p>
         )}
         {error && (
           <p className="font-sans text-xs uppercase tracking-[0.25em] text-ocean">{error}</p>
@@ -88,6 +117,14 @@ export function Chat({ runId }: { runId?: number }) {
         />
         <Button variant="secondary" onClick={() => void send()} disabled={busy}>Ask</Button>
       </div>
+
+      <button
+        type="button"
+        className="mt-3 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean underline decoration-dotted"
+        onClick={() => setDraft((d) => (d ? `${d} ` : "") + "Chiedi anche un secondo parere a un altro coach.")}
+      >
+        + chiedi un secondo parere a un altro coach
+      </button>
     </section>
   );
 }
