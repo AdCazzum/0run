@@ -97,13 +97,22 @@ describe("coach-chase game logic", () => {
 
   it("obstacles spawn off-screen right with at least the minimum clearable gap", () => {
     const s = newGame();
-    run(s, 30); // plenty of spawns at rng 0
+    run(s, 60); // plenty of spawns at rng 0
     expect(s.obstacles.length).toBeGreaterThan(0);
     for (const o of s.obstacles) expect(o.x).toBeGreaterThan(-30);
     // with rng()=0 consecutive spawn distances are exactly minGapPx(speed) apart,
     // and minGapPx at max speed must exceed a full jump's horizontal travel
     const jumpAir = (2 * -WORLD.jumpVy) / WORLD.gravity;
     expect(minGapPx(WORLD.maxSpeed)).toBeGreaterThan(WORLD.maxSpeed * jumpAir * 0.6);
+
+    // real inter-obstacle gaps: with rng()=0 each spawn lands exactly
+    // minGapPx(speed-at-spawn) after the previous one, and speed only ramps
+    // up, so every gap must be ≥ minGapPx(baseSpeed).
+    const xs = s.obstacles.map((o) => o.x).sort((a, b) => a - b);
+    expect(xs.length).toBeGreaterThan(1);
+    for (let i = 1; i < xs.length; i++) {
+      expect(xs[i] - xs[i - 1]).toBeGreaterThanOrEqual(minGapPx(WORLD.baseSpeed));
+    }
   });
 
   it("clamps dt: one 1-second frame advances at most maxDt worth of world", () => {
