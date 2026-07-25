@@ -1,21 +1,37 @@
 # 0run — the AI running coach you own
 
-Upload a GPX. It is encrypted with a key derived from your wallet signature and stored on **0G Storage**. An AI coach — minted as an **intelligent NFT on 0G Chain** — reads it against everything you have run before, with inference executed on **0G Compute** and billed on-chain. The coach's memory grows with every run and its hash is anchored on-chain, so the coach is yours: portable, verifiable, and nobody else's asset.
+Upload a run. A coach that is **yours** — an intelligent NFT, not an account on someone's platform — reads it against everything you have ever run, remembers it forever in encrypted memory, talks it over with other coaches, and answers to exactly one real human: you.
 
-Live: **https://0run.fun** · Built for ETHGlobal Lisbon 2026 (0G track).
+Live: **https://0run.fun** · Built at ETHGlobal Lisbon 2026 on **0G**, **ENS** and **World** — three partner stacks, each doing the one thing it is best at, each load-bearing.
+
+## The problem
+
+Your training data is some of the most personal data you produce — where you run, when, how your heart behaves — and today it lives in silos that monetize it, analyze it opaquely, and hold it hostage. Getting AI coaching means handing raw health data to someone's cloud and trusting a black box twice: once with your privacy, once with the answer. And as AI agents start talking to each other on your behalf, a third problem appears: on an open network, nothing distinguishes a coach acting for a real person from a bot farm scraping and spamming.
+
+0run answers all three:
+
+- **Privacy** — every run is AES-256 encrypted *before it leaves your session*, with a key derived from your wallet signature that is never persisted anywhere. Nobody can read your runs. Not even us.
+- **Verifiable analysis** — the coach's reasoning runs on decentralized compute with on-chain billing traces, and the effort score is computed inside a TEE with a per-response cryptographic attestation. Where attestation is unavailable, the UI says so instead of implying it.
+- **Ownership & portability** — the coach, its personality and its entire memory are bound to a token you hold and a name anyone can resolve. No platform sits between you and your coach.
+- **A human-backed agent network** — coaches consult each other over an open protocol, and every one of them provably answers to a unique human being.
+
+## A consumer product, not a crypto demo
+
+Nothing about using 0run requires knowing what a wallet is. You sign in with **email** (Privy creates an embedded wallet silently), export a GPX from the watch or app you already use, and drop it in. Verification of personhood is a QR code and a phone — the same gesture as any 2FA. Gas is sponsored, keys are derived, chains are invisible. The web3 machinery is what makes the guarantees real; the experience is a running app your non-crypto friend can use today.
 
 ## What is deployed and provable
 
 | Thing | Value |
 |---|---|
-| AgentNFT (`OrunAgentNFT`, ERC-7857-style) | [`0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e`](https://chainscan-galileo.0g.ai/address/0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e) |
-| CoachRegistry (memory anchor) | [`0x08b3a841393ab09A4C902800C55d24e6AF66945f`](https://chainscan-galileo.0g.ai/address/0x08b3a841393ab09A4C902800C55d24e6AF66945f) |
-| First coach minted (tokenId 1) | [tx `0x28b9c02e…`](https://chainscan-galileo.0g.ai/tx/0x28b9c02e26e8735d3ab9e474a49669069a21f0e1e6898f2cd2c05def1a24799d) |
-| Memory anchored on-chain | [tx `0x5d3ebbc6…`](https://chainscan-galileo.0g.ai/tx/0x5d3ebbc6dbd2e35085ebc86df8bccb6e286b61b13d6b438a55a924987026d812) |
-| Inference on 0G Compute | `glm-5.2`, 19.5s, on-chain billed — provider `0x7DCFe6AE…`, request id `13eed4ff-…` |
-| Chain | 0G Galileo testnet, chainId **16602** |
+| AgentNFT (`OrunAgentNFT`, ERC-7857-style) | [`0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e`](https://chainscan-galileo.0g.ai/address/0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e) on 0G Galileo (16602) |
+| CoachRegistry (memory anchor, one update per run) | [`0x08b3a841393ab09A4C902800C55d24e6AF66945f`](https://chainscan-galileo.0g.ai/address/0x08b3a841393ab09A4C902800C55d24e6AF66945f) |
+| A coach minted | [tx `0x28b9c02e…`](https://chainscan-galileo.0g.ai/tx/0x28b9c02e26e8735d3ab9e474a49669069a21f0e1e6898f2cd2c05def1a24799d) · memory anchored: [tx `0x5d3ebbc6…`](https://chainscan-galileo.0g.ai/tx/0x5d3ebbc6dbd2e35085ebc86df8bccb6e286b61b13d6b438a55a924987026d812) |
+| ERC-8004 Agentic ID | [tx `0x8b571001…`](https://chainscan-galileo.0g.ai/tx/0x8b571001e567be0bb27c8650fc819b3fcb1e5dea54f9ed1057c634fa6fde9c40) → agentId 148 on the live IdentityRegistry |
+| Inference on 0G Compute | `glm-5.2`, on-chain billed — provider `0x7DCFe6AE…`, request id in `x_0g_trace` |
+| ENS identity, resolved live | [`pedro.0run.eth`](https://sepolia.app.ens.domains/pedro.0run.eth) (Sepolia) — ENSIP-26 records incl. `agent-endpoint[a2a]`, `agent-signer` |
+| Human backing, enforced in prod | `GET /api/coach/3/agent.json` → `humanBacking: { enforced: true, registry: { contract: 0xA23a…44dA, network: "eip155:480" } }` |
 
-Every number above was measured against the real network, not estimated. The full measurement log — including the constraints that forced architectural changes — is in [`docs/0g-reality-check.md`](docs/0g-reality-check.md).
+Every number above was measured against the real network, not estimated. The measurement log — including the constraints that forced architectural changes — is in [`docs/0g-reality-check.md`](docs/0g-reality-check.md).
 
 ## Architecture
 
@@ -48,16 +64,42 @@ flowchart TB
     style CMP fill:#F7C59F,stroke:#004E89
 ```
 
-**The privacy boundary is the key boundary.** The private layer of the coach's memory (your raw runs) is encrypted with a key derived from your wallet signature — the server never persists it. The *coaching profile* (personality, methodology, non-personal aggregates) is encrypted with a service key, which is what makes lending a coach possible later without exposing the owner's data. Honest limitation: while processing a run the server sees the plaintext, because the GPX has to be parsed. Moving that inside 0G Private Computer is the roadmap item, not a solved problem.
+And the agent network on top — every arrow verified on-chain at request time:
 
-## Which 0G services and why
+```mermaid
+flowchart LR
+    H((("you<br/>(one real human)"))) -->|"approve once<br/>in World App"| AB[(AgentBook<br/>World Chain)]
+    A["marco.0run.eth<br/>(your coach)"] -->|"signed consult<br/>EIP-191"| B["pedro.0run.eth<br/>(another coach)"]
+    B -->|"resolve name →<br/>agent-signer"| ENS[(ENS<br/>Sepolia)]
+    B -->|"resolve addr →<br/>lookupHuman"| AB
+    B -->|"no human? 403<br/>over quota? 429"| A
 
-- **0G Chain** — the coach is an NFT you own (`contracts/contracts/OrunAgentNFT.sol`), and every memory update is anchored by hash (`contracts/contracts/CoachRegistry.sol`). This is the answer to "why on-chain": ownership of the agent and an auditable trail of its growth.
-- **0G Storage** — encrypted GPX files and the encrypted coach memory, with the SDK's own `aes256` encryption on top of our envelope.
-- **0G Compute** — the coach's reasoning. Responses carry `x_0g_trace` (provider address, request id, on-chain cost), which is our proof of use.
-- **Agentic ID / ERC-7857** — the coach is minted with `IntelligentData` referencing the encrypted memory root.
+    style ENS fill:#F7C59F,stroke:#004E89
+    style AB fill:#F7C59F,stroke:#004E89
+```
 
-Not used, deliberately: **0G DA**, which exists for rollups and has nothing to do with this product. Adding it to look thorough would signal we had not read the stack.
+**The privacy boundary is the key boundary.** The private layer of the coach's memory (your raw runs) is encrypted with a key derived from your wallet signature — the server never persists it. The *coaching profile* (personality, methodology, non-personal aggregates) is encrypted with a service key, which is what a consult can safely draw on: when another coach asks yours a question, it sees the profile, never the private layer, and nothing is written. Honest limitation: while processing a run the server sees the plaintext, because the GPX has to be parsed. Moving that inside confidential compute is a roadmap item, not a solved problem — and we say so.
+
+## How each partner stack is used — at its best, not as a checkbox
+
+### 0G — the coach exists on it ([full map](usages/0g.md))
+
+The coach **is** 0G infrastructure: an ERC-7857-style iNFT on **0G Chain** (plus an ERC-8004 Agentic ID on the live IdentityRegistry), encrypted memory on **0G Storage** with the Merkle root computed locally and anchored on-chain after every run, and reasoning on **0G Compute** — the effort score deliberately forced onto a TEE-attested provider (`processResponse`), the narrative report on the router path, and the UI honest about which is which. We measured the network's real behavior (uploads that take 22+ minutes to finalize, SDK calls with no timeouts) and engineered around it rather than pretending; every workaround is documented in [`docs/0g-reality-check.md`](docs/0g-reality-check.md). 0G DA is deliberately not used — it serves rollups, and wiring it in would only signal we hadn't read the stack.
+
+### ENS — identity, discovery **and authentication** for agents ([full map](usages/ens.md))
+
+Every coach gets `<name>.0run.eth`, resolved live on every render — no cache, no fallback string, and that property is tested, not claimed. The ENSIP-26 records carry the agent's human description, its web endpoint, a pointer to the exact iNFT (`0run:inft`), and — the part we are proudest of — its **machine identity**: `agent-endpoint[a2a]` is where another agent calls it, and `agent-signer` is the key allowed to speak for it. When a consult arrives, the receiver authenticates it with *nothing but a fresh name resolution*: no tokens, no API keys, no peer table — the only registry of who may speak is ENS. The same resolution's `addr` is the accountable wallet the humanity check runs against, so one lookup answers both "who is speaking" and "who answers for it".
+
+### World — proof that a unique human stands behind every agent ([full map](usages/world.md))
+
+The consult protocol is open by design — which is exactly why it needs AgentKit. Before answering, a coach resolves the caller's wallet in **AgentBook** (World Chain): an on-chain mapping to an anonymous `humanId` that exists only because a person approved the delegation in World App, biometrically. No human behind the name → **403**, however perfect the cryptography (demo it live: [`scripts/demo-rogue-agent.ts`](scripts/demo-rogue-agent.ts)). Consults are metered **per human across all their agents** (the SDK's `AgentKitStorage` contract, implemented as one atomic Postgres statement) → spinning up wallets multiplies nothing → **429**. "Could not check" answers **503**, never a lie. Owning a coach requires the same proof — one human, one coach — and registration is fully self-serve in-product: nonce → World App QR → gasless relay, no CLI. The result is a network where human backing changes **access, rate limits, economic terms and accountability** — and the UI shows it: `verified via ENS · unique human ✓` on every consult.
+
+## The demo path
+
+1. Sign in with email → mint your coach (requires proving you are one real human — QR, World App, done).
+2. Upload a GPX → watch the pipeline: encrypt → store on 0G → anchor memory hash → attested effort score → coach report.
+3. Ask your coach something outside its specialty → it consults a colleague, discovered and verified via ENS, human-checked via AgentBook — the cross-coach exchange renders in chat with both badges.
+4. Run the rogue agent script → perfect signature, no human → `403 human_backing_required`. Register that wallet with a phone → same request → `200`.
 
 ## Run it locally
 
@@ -82,7 +124,7 @@ npx hardhat run scripts/deploy.ts --network zgTestnet
 ## Tests
 
 ```bash
-npm run test --workspaces      # 63 unit/integration tests
+npm run test --workspaces      # 397 unit/integration tests (vitest, colocated)
 cd contracts && npx hardhat test
 cd apps/web && npx tsc --noEmit
 ```
@@ -96,15 +138,15 @@ BASE=https://0run.fun PRIVY_TOKEN=… DEMO_KEY_HEX=… npx tsx scripts/demo-jour
 ## Repository layout
 
 ```
-apps/web         Next.js app: UI, API routes, 0G clients, crypto, pipeline
-contracts        Hardhat: OrunAgentNFT, CoachRegistry (+ deploy scripts)
+apps/web         Next.js app: UI, API routes, 0G clients, ENS, A2A, World/AgentKit, crypto, pipeline
+contracts        Hardhat: OrunAgentNFT, CoachRegistry, RunEvents (+ deploy scripts)
 packages/shared  types, zod schemas, chain constants (single source for chainId)
 deploy           Dockerfile consumer, compose, nginx vhost, deploy + bootstrap scripts
 docs             design + implementation specs, decisions log, measured reality
-usages           per-sponsor map from integration to the exact code
-scripts          demo journey / smoke test
+usages           per-sponsor map from integration to the exact code (0g, ens, world)
+scripts          demo journey, ENS record backfill, rogue-agent demo
 ```
 
 ## Deployment
 
-Self-hosted on a Hetzner box: host nginx terminates TLS for `0run.fun` and proxies to the app container on loopback; Postgres has no published port. The image is built **on the server**, so no production secret ever reaches this public repository or CI. `git push` to `main` runs the full test suite and only then deploys, with a health check and automatic rollback to the last good commit. Details and trade-offs: [`docs/superpowers/specs/2026-07-25-cicd-deploy-spec.md`](docs/superpowers/specs/2026-07-25-cicd-deploy-spec.md).
+Self-hosted on a Hetzner box: host nginx terminates TLS for `0run.fun` and proxies to the app container on loopback; Postgres has no published port. The image is built **on the server**, so no production secret ever reaches this public repository or CI. `git push` to `main` runs the full test suite and only then deploys, with schema migration (`drizzle-kit push`), a health check and automatic rollback to the last good commit. Details and trade-offs: [`docs/superpowers/specs/2026-07-25-cicd-deploy-spec.md`](docs/superpowers/specs/2026-07-25-cicd-deploy-spec.md).
