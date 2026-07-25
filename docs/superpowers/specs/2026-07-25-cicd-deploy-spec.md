@@ -1,29 +1,29 @@
-# 0run — CI/CD e deploy automatico su 0run.fun
+# 0run — CI/CD and automatic deploy to 0run.fun
 
-**Data:** 2026-07-25 · **Stato:** in parte implementata — server ispezionato e configurato, scaffolding di deploy scritto, primo deploy end-to-end non ancora eseguito · **Dipende da:** [design MVP](./2026-07-24-0run-mvp-design.md)
+**Date:** 2026-07-25 · **Status:** partially implemented — server inspected and configured, deploy scaffolding written, first end-to-end deploy not yet executed · **Depends on:** [MVP design](./2026-07-24-0run-mvp-design.md)
 
-## 1. Obiettivo e vincoli
+## 1. Goal and constraints
 
-Push su `main` di `AdCazzum/0run` → test → build check → deploy su Hetzner (37.27.47.147) → `https://0run.fun` aggiornato con healthcheck e rollback automatico. Vincoli: repo **pubblico** (tutto ciò che finisce nei log CI è visibile al mondo), niente Vercel/registry SaaS (preferenza self-hosted), la demo di domenica non deve mai rompersi per un deploy. Il server è già stato ispezionato e parzialmente configurato: DNS `0run.fun` → `37.27.47.147` verificato, accesso SSH root attivo con due chiavi dedicate (`orun-claude-deploy` per l'operatore, `orun-gh-actions` per la CI), `.env` di produzione già scritto in `/srv/0run/.env`. Vincolo aggiuntivo emerso sul campo: **3.7 GiB RAM + 2 GiB swap** — stretti per un `next build` in un monorepo (§2.1).
+Push to `main` on `AdCazzum/0run` → tests → build check → deploy to Hetzner (37.27.47.147) → `https://0run.fun` updated, with a health check and automatic rollback. Constraints: the repo is **public** (anything that lands in CI logs is visible to the world), no Vercel/SaaS registries (self-hosted preference), and Sunday's demo must never break because of a deploy. The server has already been inspected and partially configured: DNS `0run.fun` → `37.27.47.147` verified, root SSH access active with two dedicated keys (`orun-claude-deploy` for the operator, `orun-gh-actions` for CI), production `.env` already written at `/srv/0run/.env`. An additional constraint that emerged in the field: **3.7 GiB RAM + 2 GiB swap** — tight for a `next build` in a monorepo (§2.1).
 
-## 2. Decisioni chiave (trade-off espliciti)
+## 2. Key decisions (explicit trade-offs)
 
-1. **Build sul server, non in CI.** CI fa `next build` solo come *gate* (con env fittizie); l'immagine che va in produzione è costruita su Hetzner da `docker compose build`, che legge le `NEXT_PUBLIC_*` reali dal `.env` del server. Trade-off: il build consuma CPU **e RAM** del server e il deploy dura qualche minuto, ma **nessun segreto o env di produzione tocca mai GitHub** e non serve un registry (GHCR aggiungerebbe login, tag, e un posto in più dove sbagliare). Con un repo pubblico è la scelta a minor superficie. **Rischio noto:** l'host ha solo 3.7 GiB di RAM (+2 GiB swap); `next build` su un monorepo è il punto più fragile della pipeline. Mitigazioni in atto: lo stack `coachme` preesistente sullo stesso host è stato fermato per liberare memoria (~3.0 GiB disponibili ora — se deve tornare attivo, il budget RAM va rivalutato, §7/§9d), e lo swap assorbe i picchi. **Fallback documentato se il build va comunque in OOM:** spostare il build in CI e pubblicare l'immagine su GHCR (package pubblico, nessuna auth di registry necessaria) — non implementato oggi, si attiva solo se il build sul server si dimostra inaffidabile.
-2. **`git reset --hard` sul server, non rsync.** Il repo è pubblico: il server fa `git fetch --prune origin && git reset --hard <target>` (clone già presente in `/srv/0run`, gestito da `deploy/bootstrap.sh`). Rsync dalla CI trasferirebbe la working copy del runner ed è un canale in più da proteggere; git dà gratis anche il rollback per SHA. Il `.env` è gitignorato e sopravvive intatto.
-3. **CI dovrebbe poter solo *innescare* il deploy, non eseguire comandi arbitrari — oggi non è ancora così.** Le chiavi `orun-claude-deploy` (operatore) e `orun-gh-actions` (CI) sono installate in `/root/.ssh/authorized_keys` **senza forced command**: la chiave CI ha oggi shell root piena, non solo il trigger del deploy. Il workflow `deploy.yml` la usa in modo disciplinato (esegue solo `deploy.sh <sha>`), ma se la chiave privata trapelasse dai secrets l'attaccante avrebbe shell completa sul server, non solo la possibilità di ri-deployare `main`. **Gap noto, non ancora chiuso:** restringere la chiave CI con `command="/srv/0run/deploy/deploy.sh",no-port-forwarding,no-agent-forwarding,no-pty` in `authorized_keys` resta un hardening in sospeso — timing da decidere (§9a).
-4. **Rollback per SHA git, non per tag immagine.** Dopo un healthcheck verde il server scrive `.last_good_sha`; se il deploy successivo fallisce l'healthcheck, si fa `git reset --hard` all'ultimo SHA buono e rebuild (veloce: layer cache). Un registry di immagini darebbe rollback istantaneo ma reintroduce il registry che abbiamo appena evitato. Per un'app con utenza = giudici, va bene.
-5. **Migrazioni: `drizzle-kit push --force` al deploy.** Oggi non esistono file di migrazione (`apps/web/drizzle.config.ts` punta allo schema, si usa push in dev). Generare migrazioni SQL versionate è più corretto ma è overhead da hackathon; `push` è idempotente e lo schema è additivo in questa fase. Trade-off dichiarato: `--force` applica anche modifiche distruttive senza chiedere — **vietato rinominare/droppare colonne senza coordinarsi**; migrazioni versionate in roadmap post-hackathon.
-6. **Downtime accettato (~5s).** `compose up -d` ricrea il container `web` dopo il build: breve buco mentre Next si avvia. Blue-green non vale la complessità; in compenso vale un **deploy freeze prima della demo** (vedi §9b).
+1. **Build on the server, not in CI.** CI runs `next build` only as a *gate* (with fake env values); the image that goes to production is built on Hetzner by `docker compose build`, which reads the real `NEXT_PUBLIC_*` values from the server's `.env`. Trade-off: the build consumes the server's CPU **and RAM** and the deploy takes a few minutes, but **no secret or production env value ever touches GitHub** and no registry is needed (GHCR would add login, tags, and one more place to get things wrong). With a public repo this is the smallest-surface choice. **Known risk:** the host has only 3.7 GiB of RAM (+2 GiB swap); `next build` on a monorepo is the most fragile point of the pipeline. Mitigations in place: the pre-existing `coachme` stack on the same host was stopped to free memory (~3.0 GiB available now — if it has to come back, the RAM budget must be re-evaluated, §7/§9d), and swap absorbs the peaks. **Documented fallback if the build still OOMs:** move the build to CI and publish the image to GHCR (public package, no registry auth needed) — not implemented today, activated only if the on-server build proves unreliable.
+2. **`git reset --hard` on the server, not rsync.** The repo is public: the server does `git fetch --prune origin && git reset --hard <target>` (clone already present in `/srv/0run`, managed by `deploy/bootstrap.sh`). Rsync from CI would transfer the runner's working copy and is one more channel to protect; git also gives SHA-based rollback for free. The `.env` is gitignored and survives untouched.
+3. **CI should only be able to *trigger* the deploy, not run arbitrary commands — today that is not yet the case.** The `orun-claude-deploy` (operator) and `orun-gh-actions` (CI) keys are installed in `/root/.ssh/authorized_keys` **without a forced command**: the CI key currently has a full root shell, not just the deploy trigger. The `deploy.yml` workflow uses it in a disciplined way (it only runs `deploy.sh <sha>`), but if the private key ever leaked from the secrets, the attacker would have a full shell on the server, not just the ability to redeploy `main`. **Known gap, not yet closed:** restricting the CI key with `command="/srv/0run/deploy/deploy.sh",no-port-forwarding,no-agent-forwarding,no-pty` in `authorized_keys` remains pending hardening — timing to be decided (§9a).
+4. **Rollback by git SHA, not by image tag.** After a green health check the server writes `.last_good_sha`; if the next deploy fails its health check, we `git reset --hard` to the last good SHA and rebuild (fast: layer cache). An image registry would give instant rollback but reintroduces the registry we just avoided. For an app whose user base = judges, this is fine.
+5. **Migrations: `drizzle-kit push --force` at deploy.** There are no migration files today (`apps/web/drizzle.config.ts` points at the schema; push is used in dev). Generating versioned SQL migrations is more correct but is hackathon overhead; `push` is idempotent and the schema is additive at this stage. Declared trade-off: `--force` also applies destructive changes without asking — **renaming/dropping columns without coordinating is forbidden**; versioned migrations are on the post-hackathon roadmap.
+6. **Accepted downtime (~5s).** `compose up -d` recreates the `web` container after the build: a short gap while Next boots. Blue-green isn't worth the complexity; what *is* worth it is a **deploy freeze before the demo** (see §9b).
 
-## 3. Pipeline GitHub Actions
+## 3. GitHub Actions pipeline
 
-Due workflow separati, non uno solo: `ci.yml` fa da gate (test + build placeholder) su push e PR, `deploy.yml` fa solo il deploy ed è innescato dal push su `main`. **Attenzione:** sono trigger indipendenti sullo stesso evento (`push: main`) — non c'è un `needs`/`workflow_run` che leghi l'uno all'altro, quindi i due workflow partono in parallelo e il deploy non aspetta che `ci.yml` sia verde. Oggi il "gate" è un segnale, non un blocco reale; per farlo bloccante servirebbe un trigger `workflow_run` su `deploy.yml` condizionato al successo di `ci.yml` (non implementato, fuori scope di questo documento — vedi §9).
+Two separate workflows, not one: `ci.yml` acts as the gate (tests + placeholder build) on push and PR, `deploy.yml` only deploys and is triggered by pushes to `main`. **Caution:** they are independent triggers on the same event (`push: main`) — there is no `needs`/`workflow_run` tying one to the other, so the two workflows start in parallel and the deploy does not wait for `ci.yml` to be green. Today the "gate" is a signal, not a real block; making it blocking would require a `workflow_run` trigger on `deploy.yml` conditioned on `ci.yml` succeeding (not implemented, out of scope for this document — see §9).
 
-Igiene log su repo pubblico: GH maschera i secret registrati, ma in più — niente `set -x`, mai `cat`/`echo` di env, le env del job di build in `ci.yml` sono **placeholder palesemente finti**, e la SHA target in `deploy.yml` viene validata (regex hex a 40 caratteri) **via variabile d'ambiente, mai interpolata direttamente nel comando shell** (mitigazione injection).
+Log hygiene on a public repo: GH masks registered secrets, but additionally — no `set -x`, never `cat`/`echo` env values, the build job's env values in `ci.yml` are **obviously fake placeholders**, and the target SHA in `deploy.yml` is validated (40-char lowercase hex regex) **via an environment variable, never interpolated directly into the shell command** (injection mitigation).
 
-**GH Secrets** già configurati su `AdCazzum/0run`: `DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER` (oggi `root`, §2.3), `DEPLOY_KNOWN_HOSTS` (output di `ssh-keyscan -t ed25519 37.27.47.147`, evita TOFU/MITM).
+**GH Secrets** already configured on `AdCazzum/0run`: `DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER` (currently `root`, §2.3), `DEPLOY_KNOWN_HOSTS` (output of `ssh-keyscan -t ed25519 37.27.47.147`, avoids TOFU/MITM).
 
-### `.github/workflows/ci.yml` (implementato)
+### `.github/workflows/ci.yml` (implemented)
 
 ```yaml
 name: CI
@@ -38,17 +38,17 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      - run: npm run test --workspaces --if-present   # DATABASE_URL non settata: il test db-backed si autoskippa
+      - run: npm run test --workspaces --if-present   # DATABASE_URL unset: the db-backed test skips itself
       - run: npx hardhat test
         working-directory: contracts
       - run: npx tsc --noEmit
         working-directory: apps/web
-      - name: Build (env placeholder — il valore reale si costruisce sul server)
+      - name: Build (placeholder env — the real value is built on the server)
         env: { NEXT_PUBLIC_PRIVY_APP_ID: ci-placeholder-app-id }
         run: npm run build --workspace web
 ```
 
-### `.github/workflows/deploy.yml` (implementato)
+### `.github/workflows/deploy.yml` (implemented)
 
 ```yaml
 name: Deploy
@@ -60,9 +60,9 @@ concurrency: { group: deploy-production, cancel-in-progress: false }
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production    # consente approvazioni/freeze da UI GitHub (§9b)
+    environment: production    # enables approvals/freezes from the GitHub UI (§9b)
     steps:
-      - name: Validate target revision   # github.sha va in una env var, mai interpolato nello shell
+      - name: Validate target revision   # github.sha goes into an env var, never interpolated into the shell
         env: { TARGET_SHA: "${{ github.sha }}" }
         run: |
           case "$TARGET_SHA" in
@@ -94,25 +94,25 @@ jobs:
           echo "health endpoint did not report ok after deploy"; exit 1
 ```
 
-Nota `hardhat test`: gira sulla rete in-memory (nessun RPC esterno, nessun fondo) — deterministico in CI. Il **deploy dei contratti resta manuale** (`contracts/scripts/deploy.ts`), gli indirizzi vivono nel `.env` del server — oggi ancora vuoti (`AGENT_NFT_ADDRESS`, `COACH_REGISTRY_ADDRESS`), in attesa del deploy on-chain.
+Note on `hardhat test`: it runs on the in-memory network (no external RPC, no funds) — deterministic in CI. **Contract deployment stays manual** (`contracts/scripts/deploy.ts`); the addresses live in the server's `.env` — still empty at the time of writing (`AGENT_NFT_ADDRESS`, `COACH_REGISTRY_ADDRESS`), awaiting the on-chain deploy.
 
-## 4. Architettura server: nginx di sistema + docker compose
+## 4. Server architecture: system nginx + docker compose
 
-Il proxy TLS **non è nello stack Docker**. Sull'host gira già nginx di sistema (non containerizzato), in ascolto su :80/:443, con un vhost preesistente (`coachme.conf`) e `certbot`/Let's Encrypt già installati (`/usr/bin/certbot`, certificato esistente per `37.27.47.147.sslip.io`). **Caddy è quindi fuori**: non potrebbe bindare :443 accanto a nginx. Il compose pubblica `web` solo su loopback e nginx fa da reverse proxy davanti.
+The TLS proxy is **not in the Docker stack**. The host already runs system nginx (not containerized), listening on :80/:443, with a pre-existing vhost (`coachme.conf`) and `certbot`/Let's Encrypt already installed (`/usr/bin/certbot`, existing certificate for `37.27.47.147.sslip.io`). **Caddy is therefore out**: it could not bind :443 next to nginx. The compose stack publishes `web` on loopback only and nginx reverse-proxies in front.
 
-Due servizi compose + un job one-shot, rete interna, più nginx sull'host:
+Two compose services + a one-shot job, internal network, plus nginx on the host:
 
-- **db** — `postgres:16-alpine`, volume `dbdata`, **nessuna porta pubblicata** (raggiungibile solo da `web`/`migrate`; per debug si usa `docker compose exec db psql`). Healthcheck `pg_isready`.
-- **web** — Next.js `output: "standalone"`, build multi-stage, utente non-root (`nextjs`), pubblicato **solo su loopback** (`127.0.0.1:3001:3000`), healthcheck su `/api/health`.
-- **migrate** — stesso `apps/web/Dockerfile` ma target `migrator` (ha `drizzle-kit` nei node_modules e le sorgenti, non gira come `runner`); non è un profilo separato ma un servizio con `restart: "no"`, eseguito esplicitamente da `deploy.sh` (`compose run --rm migrate`) prima di `up`.
-- **nginx** (host, non compose) — vhost `deploy/nginx-0run.conf`: `server_name 0run.fun www.0run.fun`, `client_max_body_size 32m` (upload GPX/Apple Health export via multipart), `proxy_pass http://127.0.0.1:3001`, timeout di lettura/scrittura a 300s (upload su 0G Storage e inferenza TEE sono lenti, un default nginx da 60s li tronca). Installato da `deploy/bootstrap.sh` in `/etc/nginx/sites-available/0run.conf` + symlink in `sites-enabled`; TLS ottenuto con `certbot --nginx -d 0run.fun -d www.0run.fun --redirect`, che riscrive il vhost aggiungendo il blocco TLS e il redirect da :80.
+- **db** — `postgres:16-alpine`, `dbdata` volume, **no published ports** (reachable only from `web`/`migrate`; for debugging use `docker compose exec db psql`). `pg_isready` healthcheck.
+- **web** — Next.js `output: "standalone"`, multi-stage build, non-root user (`nextjs`), published **on loopback only** (`127.0.0.1:3001:3000`), healthcheck on `/api/health`.
+- **migrate** — same `apps/web/Dockerfile` but target `migrator` (has `drizzle-kit` in node_modules plus the sources; does not run as `runner`); not a separate profile but a service with `restart: "no"`, executed explicitly by `deploy.sh` (`compose run --rm migrate`) before `up`.
+- **nginx** (host, not compose) — vhost `deploy/nginx-0run.conf`: `server_name 0run.fun www.0run.fun`, `client_max_body_size 32m` (GPX/Apple Health export uploads via multipart), `proxy_pass http://127.0.0.1:3001`, read/write timeouts at 300s (0G Storage uploads and TEE inference are slow; nginx's 60s default truncates them). Installed by `deploy/bootstrap.sh` into `/etc/nginx/sites-available/0run.conf` + symlink in `sites-enabled`; TLS obtained with `certbot --nginx -d 0run.fun -d www.0run.fun --redirect`, which rewrites the vhost adding the TLS block and the :80 redirect.
 
-**Prerequisiti di codice — in corso, non più bloccanti:**
-1. `apps/web/next.config.ts`: `output: "standalone"` + `outputFileTracingRoot` (necessario in monorepo: senza, `packages/shared` resta fuori da `.next/standalone`) — fatto.
-2. Route `apps/web/src/app/api/health/route.ts`: esegue `select 1` sul db via drizzle, risponde `{ ok: true, db: true, ts }` (200) o `{ ok: false, db: false, error, ts }` (503) — fatta, usata da compose healthcheck, `deploy.sh` e dallo smoke test di `deploy.yml`.
-3. **Regola NEXT_PUBLIC:** ogni nuova variabile `NEXT_PUBLIC_*` (oggi solo `NEXT_PUBLIC_PRIVY_APP_ID`) va aggiunta in *tre* posti: `ARG` nel Dockerfile, `build.args` nel compose, placeholder nel job CI. Dimenticarla = valore `undefined` inlined nel bundle, che si scopre solo in produzione.
+**Code prerequisites — in progress, no longer blocking:**
+1. `apps/web/next.config.ts`: `output: "standalone"` + `outputFileTracingRoot` (required in a monorepo: without it, `packages/shared` is left out of `.next/standalone`) — done.
+2. Route `apps/web/src/app/api/health/route.ts`: runs `select 1` on the db via drizzle, answers `{ ok: true, db: true, ts }` (200) or `{ ok: false, db: false, error, ts }` (503) — done, used by the compose healthcheck, by `deploy.sh` and by `deploy.yml`'s smoke test.
+3. **NEXT_PUBLIC rule:** every new `NEXT_PUBLIC_*` variable (today only `NEXT_PUBLIC_PRIVY_APP_ID`) must be added in *three* places: `ARG` in the Dockerfile, `build.args` in the compose file, placeholder in the CI job. Forgetting one = `undefined` inlined into the bundle, discovered only in production.
 
-### `apps/web/Dockerfile` (implementato)
+### `apps/web/Dockerfile` (implemented)
 
 ```dockerfile
 # Build context is the MONOREPO ROOT, not apps/web.
@@ -147,19 +147,19 @@ USER nextjs
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
 
-# Target separato per il container migrate one-shot: serve drizzle-kit (devDep) + sorgenti.
+# Separate target for the one-shot migrate container: it needs drizzle-kit (a devDep) + sources.
 FROM builder AS migrator
 WORKDIR /app/apps/web
 CMD ["npx", "drizzle-kit", "push", "--config", "drizzle.config.ts", "--force"]
 ```
 
-(Lo standalone di un monorepo npm preserva la struttura `apps/web/…`: l'entrypoint è `apps/web/server.js`. Il file vive in `apps/web/Dockerfile`, non in `deploy/` — il contesto di build resta comunque la root del repo.)
+(An npm monorepo's standalone output preserves the `apps/web/…` structure: the entrypoint is `apps/web/server.js`. The file lives in `apps/web/Dockerfile`, not in `deploy/` — the build context is still the repo root.)
 
-### `deploy/docker-compose.prod.yml` (implementato)
+### `deploy/docker-compose.prod.yml` (implemented)
 
 ```yaml
-# TLS e :80/:443 sono di nginx di sistema (deploy/nginx-0run.conf): questo stack
-# pubblica l'app solo su loopback e non ha un proprio reverse proxy.
+# TLS and :80/:443 belong to system nginx (deploy/nginx-0run.conf): this stack
+# publishes the app on loopback only and has no reverse proxy of its own.
 name: orun
 services:
   db:
@@ -201,9 +201,9 @@ volumes:
   dbdata:
 ```
 
-**`DATABASE_URL`:** non viene letta dal `.env` per `db`/`web`/`migrate` — il compose la costruisce esplicitamente da `${POSTGRES_PASSWORD}` puntando all'host `db` (non `localhost` come in dev). Il `DATABASE_URL` eventualmente presente nel `.env` serve solo a tooling locale (es. `drizzle-kit studio` da una shell sul server), non al runtime dei container.
+**`DATABASE_URL`:** it is not read from `.env` for `db`/`web`/`migrate` — the compose file builds it explicitly from `${POSTGRES_PASSWORD}` pointing at the `db` host (not `localhost` as in dev). Any `DATABASE_URL` present in `.env` only serves local tooling (e.g. `drizzle-kit studio` from a shell on the server), not the containers' runtime.
 
-### `deploy/nginx-0run.conf` (implementato)
+### `deploy/nginx-0run.conf` (implemented)
 
 ```nginx
 server {
@@ -211,7 +211,7 @@ server {
     listen [::]:80;
     server_name 0run.fun www.0run.fun;
 
-    client_max_body_size 32m;   # GPX e Apple Health export via multipart
+    client_max_body_size 32m;   # GPX and Apple Health exports via multipart
 
     location / {
         proxy_pass http://127.0.0.1:3001;
@@ -222,24 +222,24 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        # 0G Storage upload e inferenza TEE sono lente: timeout lunghi.
+        # 0G Storage uploads and TEE inference are slow: long timeouts.
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
     }
 }
 ```
 
-`certbot --nginx --redirect` riscrive questo file in place aggiungendo il blocco `listen 443 ssl` e il redirect da :80 — non è nel repo perché generato sull'host al primo bootstrap.
+`certbot --nginx --redirect` rewrites this file in place, adding the `listen 443 ssl` block and the :80 redirect — it is not in the repo because it is generated on the host at first bootstrap.
 
-## 5. Gestione segreti
+## 5. Secret management
 
-- **`/srv/0run/.env` è già scritto** (root-owned, `chmod 600`, mai in git, scritto a mano sull'host — non copiato dalla CI). Contiene `POSTGRES_PASSWORD` (generata fresca per questo ambiente), `SERVICE_ENC_KEY` (32 byte hex, distinta da ogni altro ambiente), `TREASURY_PRIVATE_KEY`, `PRIVY_APP_SECRET`, `ROUTER_API_KEY`, `NEXT_PUBLIC_PRIVY_APP_ID`, endpoint 0G — stesso schema di `.env.example` (template completo anche in `deploy/bootstrap.sh`, stampato se `.env` manca). **Ancora vuoti:** `AGENT_NFT_ADDRESS` e `COACH_REGISTRY_ADDRESS`, in attesa del deploy on-chain dei contratti.
-- GitHub conosce solo: `DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER` (oggi `root` — vedi il gap sul forced command in §2.3), `DEPLOY_KNOWN_HOSTS`. Mai chiavi private di wallet o API key in GH Secrets: la CI non ne ha bisogno per design (decisione 1).
-- `NEXT_PUBLIC_PRIVY_APP_ID` finisce comunque nel bundle client (è pubblico per natura), ma teniamo il valore reale fuori dai log CI per uniformità di regola: *tutto il reale sta sul server*.
+- **`/srv/0run/.env` is already written** (root-owned, `chmod 600`, never in git, written by hand on the host — never copied from CI). It contains `POSTGRES_PASSWORD` (freshly generated for this environment), `SERVICE_ENC_KEY` (32 hex bytes, distinct from every other environment), `TREASURY_PRIVATE_KEY`, `PRIVY_APP_SECRET`, `ROUTER_API_KEY`, `NEXT_PUBLIC_PRIVY_APP_ID`, 0G endpoints — same schema as `.env.example` (full template also in `deploy/bootstrap.sh`, printed when `.env` is missing). **Still empty:** `AGENT_NFT_ADDRESS` and `COACH_REGISTRY_ADDRESS`, awaiting the on-chain contract deploy.
+- GitHub knows only: `DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER` (currently `root` — see the forced-command gap in §2.3), `DEPLOY_KNOWN_HOSTS`. Never wallet private keys or API keys in GH Secrets: CI doesn't need them by design (decision 1).
+- `NEXT_PUBLIC_PRIVY_APP_ID` ends up in the client bundle anyway (it is public by nature), but we keep the real value out of CI logs for rule uniformity: *everything real lives on the server*.
 
-## 6. Healthcheck, rollback, script di deploy
+## 6. Healthcheck, rollback, deploy script
 
-### `deploy/deploy.sh` (implementato — vive sul server, versionato nel repo)
+### `deploy/deploy.sh` (implemented — lives on the server, versioned in the repo)
 
 ```bash
 #!/usr/bin/env bash
@@ -284,51 +284,50 @@ echo "DEPLOY FAILED — rolling back"
 ROLLBACK_SHA=$(cat "$LAST_GOOD_FILE" 2>/dev/null || echo "$PREVIOUS_SHA")
 git reset --hard "$ROLLBACK_SHA"
 if deploy_current_tree && wait_healthy; then
-  echo "rollback OK — serving ${ROLLBACK_SHA:0:7}, deploy di ${NEW_SHA:0:7} rifiutato"
+  echo "rollback OK — serving ${ROLLBACK_SHA:0:7}, deploy of ${NEW_SHA:0:7} rejected"
 else
   echo "ROLLBACK ALSO FAILED — site is down, manual intervention required"
 fi
-exit 1   # il job GitHub resta rosso anche se il rollback salva il sito
+exit 1   # the GitHub job stays red even if the rollback saved the site
 ```
 
-Differenze dal design iniziale: nessun `caddy` da avviare in `deploy_current_tree` (il proxy è fuori compose, §4); healthcheck via `curl` diretto sull'host, non `compose exec web wget` (la porta 3001 è già pubblicata su loopback); 40 tentativi da 3s invece di 30, per lasciare margine a un build lento sulla RAM disponibile; in caso di rollback fallito anche lui, lo script termina comunque con `exit 1` e un log esplicito invece di provare altro — a quel punto serve intervento manuale.
+Differences from the initial design: no `caddy` to start in `deploy_current_tree` (the proxy is outside compose, §4); healthcheck via direct `curl` on the host, not `compose exec web wget` (port 3001 is already published on loopback); 40 attempts of 3s instead of 30, to leave headroom for a slow build on the available RAM; if the rollback fails too, the script still ends with `exit 1` and an explicit log instead of trying anything else — at that point manual intervention is required.
 
-Rollback manuale (se serve tornare più indietro di `.last_good_sha`): `git reset --hard <sha> && deploy/deploy.sh <sha>` da una shell admin sul server, oppure `git revert` + push su `main` per passare dalla pipeline (preferito: lascia traccia).
+Manual rollback (if you need to go further back than `.last_good_sha`): `git reset --hard <sha> && deploy/deploy.sh <sha>` from an admin shell on the server, or `git revert` + push to `main` to go through the pipeline (preferred: it leaves a trace).
 
-## 7. Bootstrap del server — fatto
+## 7. Server bootstrap — done
 
-`deploy/bootstrap.sh` è idempotente (safe da rilanciare) e copre: clone/fetch del repo in `/srv/0run`, install del vhost nginx + `nginx -t && systemctl reload nginx`, emissione certificato con `certbot --nginx --redirect` (skip se `/etc/letsencrypt/live/0run.fun` esiste già), verifica che `.env` esista — altrimenti stampa il template completo ed esce con un messaggio azionabile invece di proseguire silenziosamente — poi lancia il primo deploy (`deploy.sh origin/main`).
+`deploy/bootstrap.sh` is idempotent (safe to re-run) and covers: repo clone/fetch into `/srv/0run`, nginx vhost install + `nginx -t && systemctl reload nginx`, certificate issuance with `certbot --nginx --redirect` (skipped if `/etc/letsencrypt/live/0run.fun` already exists), verification that `.env` exists — otherwise it prints the full template and exits with an actionable message instead of silently continuing — then it runs the first deploy (`deploy.sh origin/main`).
 
-Stato reale alla data di questo documento:
+Actual state at the time of this document:
 
-- **Host:** Ubuntu 26.04, Docker 29.6.1, Compose v5.3.1, 38 GB disco (27 GB liberi), **3.7 GiB RAM + 2 GiB swap**.
-- **DNS:** `0run.fun` → `37.27.47.147` verificato.
-- **SSH:** accesso root disponibile al controller; chiavi `orun-claude-deploy` (operatore) e `orun-gh-actions` (CI) installate in `/root/.ssh/authorized_keys` — nessun forced command ancora (§2.3, §9a).
-- **nginx:** già in ascolto su :80/:443 con un vhost preesistente (`coachme.conf`) e certbot già installato; il vhost `0run.conf` si aggiunge accanto, non lo sostituisce.
-- **`coachme` (stack preesistente sullo stesso host):** fermato per liberare memoria (~3.0 GiB disponibili ora). Se deve tornare attivo, il budget RAM per `0run` va rivalutato — coi due stack su, 3.7 GiB potrebbero non bastare al build (§9d).
-- **GitHub Secrets:** i quattro (`DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_KNOWN_HOSTS`) sono già configurati su `AdCazzum/0run`.
-- **`/srv/0run/.env`:** scritto (§5).
-- **Non ancora fatto:** il primo `deploy.sh` non è ancora girato end-to-end — nessuna verifica reale che il build regga sulla RAM disponibile, indirizzi contratti ancora vuoti.
+- **Host:** Ubuntu 26.04, Docker 29.6.1, Compose v5.3.1, 38 GB disk (27 GB free), **3.7 GiB RAM + 2 GiB swap**.
+- **DNS:** `0run.fun` → `37.27.47.147` verified.
+- **SSH:** root access available to the operator; `orun-claude-deploy` (operator) and `orun-gh-actions` (CI) keys installed in `/root/.ssh/authorized_keys` — no forced command yet (§2.3, §9a).
+- **nginx:** already listening on :80/:443 with a pre-existing vhost (`coachme.conf`) and certbot already installed; the `0run.conf` vhost is added alongside, not replacing it.
+- **`coachme` (pre-existing stack on the same host):** stopped to free memory (~3.0 GiB available now). If it has to come back, the RAM budget for `0run` must be re-evaluated — with both stacks up, 3.7 GiB may not be enough for the build (§9d).
+- **GitHub Secrets:** all four (`DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_KNOWN_HOSTS`) already configured on `AdCazzum/0run`.
+- **`/srv/0run/.env`:** written (§5).
+- **Not yet done:** the first `deploy.sh` has not run end-to-end yet — no real verification that the build fits in the available RAM, contract addresses still empty.
 
-## 8. Scope MVP — cosa NON facciamo
+## 8. MVP scope — what we do NOT do
 
-- **Niente registry di immagini** (GHCR/Docker Hub) *salvo emergenza*: build sul server, rollback via git. Se il build va in OOM sulla RAM disponibile, il fallback documentato è spostare il build in CI e pubblicare su GHCR (§2.1) — non attivato oggi.
-- **Niente zero-downtime/blue-green**: ~5s di buco a deploy, accettato; freeze prima della demo.
-- **Niente staging**: `main` = produzione; si testa in locale e con la CI.
-- **Niente CD dei contratti**: deploy Hardhat manuale, indirizzi in `.env` (un redeploy dei contratti in automatico durante l'hackathon è un footgun, non una feature).
-- **Niente migrazioni SQL versionate**: `drizzle-kit push` con la regola "solo additivo" (§2.5).
-- **Niente backup automatici del DB**: il DB è un indice ricostruibile da 0G; un `pg_dump` manuale pre-demo basta.
-- **Niente watchtower/auto-update, niente k8s, niente Dependabot** durante l'hackathon.
+- **No image registry** (GHCR/Docker Hub) *except in an emergency*: build on the server, rollback via git. If the build OOMs on the available RAM, the documented fallback is moving the build to CI and publishing to GHCR (§2.1) — not activated today.
+- **No zero-downtime/blue-green**: ~5s gap per deploy, accepted; freeze before the demo.
+- **No staging**: `main` = production; testing happens locally and in CI.
+- **No contract CD**: manual Hardhat deploy, addresses in `.env` (auto-redeploying contracts during a hackathon is a footgun, not a feature).
+- **No versioned SQL migrations**: `drizzle-kit push` with the "additive only" rule (§2.5).
+- **No automatic DB backups**: the DB is an index rebuildable from 0G; a manual `pg_dump` before the demo is enough.
+- **No watchtower/auto-update, no k8s, no Dependabot** during the hackathon.
 
-## 9. Domande aperte (richiedono una decisione di Ivan)
+## 9. Open questions (require a decision from Ivan)
 
-a. **Hardening della chiave CI.** Restringere `orun-gh-actions` con un forced command (`command="/srv/0run/deploy/deploy.sh",no-port-forwarding,no-agent-forwarding,no-pty`) — farlo ora, prima della demo, o accettare il rischio (shell root piena se la chiave trapela dai secrets) fino a dopo l'hackathon?
-b. **Reviewer obbligatorio sull'environment `production`.** GitHub permette di richiedere un'approvazione manuale prima che `deploy.yml` giri — utile come freeze per il giorno della demo. Attivarlo? Se sì, chi è il reviewer (solo Ivan, o anche altri)?
-c. **`drizzle-kit push --force` vs migrazioni versionate.** Oggi additivo-only per convenzione, non per garanzia tecnica (§2.5). Resta la scelta giusta per l'hackathon, o conviene generare le prime migrazioni SQL versionate ora che lo schema comincia a stabilizzarsi?
-d. **`coachme` deve tornare su?** È fermo per liberare RAM (§7). Se deve girare di nuovo in parallelo a `0run`, il budget di 3.7 GiB + 2 GiB swap va rivisto — upgrade dell'host, o spostare il build di `0run` in CI con GHCR (§2.1) — prima che diventi un problema a runtime, non durante la demo.
+a. **CI key hardening.** Restrict `orun-gh-actions` with a forced command (`command="/srv/0run/deploy/deploy.sh",no-port-forwarding,no-agent-forwarding,no-pty`) — do it now, before the demo, or accept the risk (full root shell if the key leaks from the secrets) until after the hackathon?
+b. **Required reviewer on the `production` environment.** GitHub can require a manual approval before `deploy.yml` runs — useful as a freeze on demo day. Enable it? If so, who is the reviewer (Ivan only, or others too)?
+c. **`drizzle-kit push --force` vs versioned migrations.** Today additive-only by convention, not by technical guarantee (§2.5). Still the right call for the hackathon, or is it worth generating the first versioned SQL migrations now that the schema is starting to stabilize?
+d. **Should `coachme` come back up?** It is stopped to free RAM (§7). If it must run alongside `0run` again, the 3.7 GiB + 2 GiB swap budget needs revisiting — host upgrade, or move `0run`'s build to CI with GHCR (§2.1) — before it becomes a runtime problem, not during the demo.
 
-## 10. Riferimenti
+## 10. References
 
-- File implementati: `.github/workflows/ci.yml` · `.github/workflows/deploy.yml` · `apps/web/Dockerfile` · `deploy/docker-compose.prod.yml` · `deploy/nginx-0run.conf` · `deploy/deploy.sh` · `deploy/bootstrap.sh`
-- Prerequisiti codice: `output: "standalone"` + `outputFileTracingRoot` in `next.config.ts` (fatto) · route `/api/health` (fatta) · regola tre-posti per `NEXT_PUBLIC_*` (§4)
-- Compose dev esistente (`docker-compose.yml` in root, solo postgres su loopback) resta invariato per lo sviluppo locale.
+- Implemented files: `.github/workflows/ci.yml` · `.github/workflows/deploy.yml` · `apps/web/Dockerfile` · `deploy/docker-compose.prod.yml` · `deploy/nginx-0run.conf` · `deploy/deploy.sh` · `deploy/bootstrap.sh`
+- Code prerequisites: `output: "standalone"` + `outputFileTracingRoot` in `next.config.ts` (done) · `/api/health` route (done) · three-places rule for `NEXT_PUBLIC_*` (§4)
