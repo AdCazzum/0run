@@ -2362,7 +2362,14 @@ export async function POST(req: Request) {
 }
 ```
 
-`apps/web/src/app/runs/[id]/page.tsx` — layout asimmetrico 12 colonne: mappa `md:col-span-5 md:col-start-1`, report `md:col-span-6 md:col-start-7` (7/5 spezzato, mai 50/50); sopra, `<PipelineSteps>` finché `status === "processing"`; sotto il report, `<Chat>`. `apps/web/src/app/dashboard/page.tsx` — dashboard autenticata: lista corse come `<Card>` con overline data + stats, card del coach, CTA upload. (La route `/` pubblica è il Task 17.)
+`apps/web/src/app/runs/[id]/page.tsx` — layout asimmetrico 12 colonne: mappa `md:col-span-5 md:col-start-1`, report `md:col-span-6 md:col-start-7` (7/5 spezzato, mai 50/50); sopra, `<PipelineSteps>` finché `status === "processing"`; sotto il report, `<Chat>`. `apps/web/src/app/dashboard/page.tsx` — dashboard autenticata (specifica concordata con Ivan il 2026-07-25). È un **feed editoriale di card**, non un registro di allenamenti:
+
+- **Card della corsa**: overline con la data + linea decorativa, poi la **headline del report del coach** in Playfair (il campo `headline` che già generiamo) come elemento dominante, le statistiche come micro-label uppercase sotto, e il badge di prova (TEE/tx). Il differenziale del prodotto deve essere leggibile nel feed: se la card mostra solo "5,02 km · 25:00" abbiamo fatto Strava.
+- **Quattro stati, tutti progettati** (uno stato vuoto non gestito è il primo giudizio che si prende un giudice al login): (a) nessun coach → CTA al mint con la copy da manifesto; (b) coach senza corse → è qui che vive l'onboarding, non in un tooltip; (c) corsa in `processing` → la card mostra la pipeline a stati inline, perché l'elaborazione dura minuti e senza feedback l'utente crede che l'upload sia andato perso; (d) feed popolato.
+- **Header**: card del coach (nome ENS quando c'è, link a iNFT/explorer) e stato discreto dei dati sanitari (es. "health data · 7 giorni coperti"). I dati sanitari NON sono un'attività e non entrano nel feed: sono un layer di contesto e il loro effetto si vede dentro i report ("recovery context"), non come card.
+- **CTA**: upload di una nuova corsa in evidenza; upload dei dati sanitari nell'area coach/profilo, non nel feed.
+
+**Chat**: una sola implementazione e un solo endpoint, con un `runId` opzionale. Dalla pagina di una corsa la chat pinna quella corsa nel contesto del prompt (altrimenti "com'è andata?" non ha referente); dalla dashboard è generale sullo storico. (La route `/` pubblica è il Task 17.)
 
 - [ ] **Step 4: Run to verify pass** — `npx vitest run -w web src/components/run` → PASS (2 test). Verifica manuale end-to-end su Galileo reale: upload GPX vero → 5 step verdi → report con confronto → chat risponde in personalità.
 
