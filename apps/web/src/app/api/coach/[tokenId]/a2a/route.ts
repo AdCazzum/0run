@@ -8,6 +8,7 @@ import { resolveCoachEns } from "@/lib/ens/resolve";
 import { loadConsultProfile } from "@/lib/coach/consult-profile";
 import { systemPrompt } from "@/lib/coach/prompts";
 import { coachComplete } from "@/lib/inference";
+import { checkA2aAdmission } from "@/lib/world/gate";
 import type { ChatMsg } from "@/lib/inference";
 
 const Body = z.object({
@@ -31,8 +32,11 @@ const Body = z.object({
  * that registers a compatible subname can speak here; nobody else can.
  *
  * Privacy contract — identical to the ask route (see its doc comment):
- * profile cascade only, never memoryRoot/memoryCipher, and NOTHING is ever
- * written. Anti-loop by construction: this consultant's prompt offers no
+ * profile cascade only, never memoryRoot/memoryCipher. The ONLY write this
+ * route can cause is the per-human quota counter inside checkA2aAdmission
+ * (agentkit_usage: endpoint bucket + humanId + count — no content, no
+ * addresses; approved amendment, spec 2026-07-25-agentkit-human-backing).
+ * Anti-loop by construction: this consultant's prompt offers no
  * colleagues and its reply is never parsed for markers — max depth 1.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ tokenId: string }> }) {
@@ -80,6 +84,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
     const verdict = await verifyConsult(msg, { signer, selfName: coach.ensName });
     if (!verdict.ok) return NextResponse.json({ error: verdict.reason }, { status: 401 });
 
+    // Humanity, after authenticity: ENS said WHO speaks (agent-signer); now
+    // AgentBook says whether a real, unique human stands behind that name —
+    // via the caller's ENS addr, the accountable wallet of the delegation
+    // chain. Refusals (403 no human / 429 per-human quota / 503 unknown) are
+    // built by the gate; the chat side degrades gracefully on any of them.
+    const admission = await checkA2aAdmission(caller.address);
+    if (!admission.ok) return admission.response;
+
     const { profile, profileSource } = await loadConsultProfile(coach);
 
     const messages: ChatMsg[] = [
@@ -106,11 +118,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
       return NextResponse.json({ error: `inference non disponibile: ${e.message ?? e}` }, { status: 502 });
     }
 
-    // Deliberately no db write of any kind — stateless, like the ask route.
+    // No write here — the sole write on this path is the quota counter in
+    // checkA2aAdmission (see the doc comment above).
     return NextResponse.json({
       reply: completion.text,
       coach: { name: profile.name, ensName: coach.ensName, personality: profile.personality },
       profileSource,
+      humanBacked: admission.humanBacked,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: e.status ?? 500 });

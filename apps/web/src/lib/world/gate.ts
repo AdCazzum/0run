@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { lookupHumanId } from "@/lib/world/agentbook";
+import { agentBookAddress, lookupHumanId } from "@/lib/world/agentbook";
+import { agentkitStorage } from "@/lib/world/agentkitStorage";
 
 /**
  * "Owning an agent requires proving you are a unique human."
@@ -101,4 +102,80 @@ export async function checkHumanBacking(wallet: string): Promise<GateResult> {
   }
 
   return { ok: true, humanId: lookup.humanId };
+}
+
+export type A2aAdmission =
+  | { ok: true; humanBacked: { humanId: string } | null }
+  | { ok: false; response: NextResponse };
+
+/**
+ * Admission control for the agent→agent consult endpoint. ENS already told
+ * the route WHO is speaking (agent-signer signature); this decides whether a
+ * real, unique human stands behind that name — `callerAddress` is the ENS
+ * `addr` of the calling agent, the accountable wallet of the delegation
+ * chain human → wallet (AgentBook) → name (ENS addr) → key (agent-signer).
+ *
+ * Enforcement is opt-in (REQUIRE_HUMAN_BACKED_A2A=1), same convention as the
+ * mint gate. With the flag off the lookup still runs so the UI badge works,
+ * but nothing is refused and the quota counter is never written.
+ * Unknown (RPC error) is answered 503, never 403 — see checkHumanBacking.
+ */
+export async function checkA2aAdmission(callerAddress: string | null): Promise<A2aAdmission> {
+  const enforced = a2aHumanBackingEnforced();
+
+  if (!callerAddress) {
+    if (!enforced) return { ok: true, humanBacked: null };
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "il nome del chiamante non pubblica un indirizzo: nessun umano ne risponde", reason: "human_backing_required" },
+        { status: 403 },
+      ),
+    };
+  }
+
+  const lookup = await lookupHumanId(callerAddress);
+
+  if (lookup.error) {
+    if (!enforced) return { ok: true, humanBacked: null };
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "impossibile verificare ora il legame con un umano, riprova", detail: lookup.error },
+        { status: 503 },
+      ),
+    };
+  }
+
+  if (!lookup.humanId) {
+    if (!enforced) return { ok: true, humanBacked: null };
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "questo endpoint risponde solo ad agenti con un umano reale e unico alle spalle",
+          reason: "human_backing_required",
+          agentbook: { contract: agentBookAddress(), network: "eip155:480" },
+          register: `${(process.env.SITE_URL ?? "https://0run.fun").replace(/\/$/, "")}/mint`,
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
+  if (enforced) {
+    const day = new Date().toISOString().slice(0, 10);
+    const allowed = await agentkitStorage.tryIncrementUsage(`a2a:${day}`, lookup.humanId, a2aDailyQuotaPerHuman());
+    if (!allowed) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "quota giornaliera per umano esaurita", reason: "quota_exhausted", humanId: lookup.humanId },
+          { status: 429 },
+        ),
+      };
+    }
+  }
+
+  return { ok: true, humanBacked: { humanId: lookup.humanId } };
 }
