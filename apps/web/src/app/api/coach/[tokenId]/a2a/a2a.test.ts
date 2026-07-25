@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextResponse } from "next/server";
 import { signConsult, type ConsultPayload } from "@/lib/a2a/protocol";
 
 // Chiave di test deterministica: address 0x7E5F...5Bdf (vedi protocol.test.ts).
@@ -39,6 +40,11 @@ const coachCompleteMock = vi.fn(async (_messages: { role: string; content: strin
 }));
 vi.mock("@/lib/inference", () => ({ coachComplete: coachCompleteMock }));
 
+const admissionMock = vi.fn(async (): Promise<
+  { ok: true; humanBacked: { humanId: string } | null } | { ok: false; response: Response }
+> => ({ ok: true, humanBacked: { humanId: "0x1234" } }));
+vi.mock("@/lib/world/gate", () => ({ checkA2aAdmission: admissionMock }));
+
 const NOW = 1_753_440_000;
 async function signedBody(overrides: Partial<ConsultPayload> = {}) {
   const payload: ConsultPayload = {
@@ -68,6 +74,7 @@ describe("POST /api/coach/[tokenId]/a2a", () => {
     resolveMock.mockClear();
     loadProfileMock.mockClear();
     coachCompleteMock.mockClear();
+    admissionMock.mockClear().mockResolvedValue({ ok: true, humanBacked: { humanId: "0x1234" } });
   });
   afterEach(() => vi.useRealTimers());
 
@@ -137,5 +144,39 @@ describe("POST /api/coach/[tokenId]/a2a", () => {
     const joined = JSON.stringify(sentMessages);
     expect(joined).toContain("Come imposti i lunghi oltre i 30km?");
     expect(joined).not.toContain("<consult");
+  });
+
+  it("consulto valido → humanBacked nel body; l'accountable è l'addr ENS del chiamante", async () => {
+    const { POST } = await import("./route");
+    const body = await (await POST(req(await signedBody()), params("2"))).json();
+    expect(body.humanBacked).toEqual({ humanId: "0x1234" });
+    expect(admissionMock).toHaveBeenCalledWith("0x" + "aa".repeat(20));
+  });
+
+  it("agente senza umano dietro → 403, inference mai chiamata", async () => {
+    admissionMock.mockResolvedValueOnce({
+      ok: false,
+      response: NextResponse.json({ reason: "human_backing_required" }, { status: 403 }),
+    });
+    const { POST } = await import("./route");
+    const res = await POST(req(await signedBody()), params("2"));
+    expect(res.status).toBe(403);
+    expect(coachCompleteMock).not.toHaveBeenCalled();
+  });
+
+  it("quota per umano esaurita → 429", async () => {
+    admissionMock.mockResolvedValueOnce({
+      ok: false,
+      response: NextResponse.json({ reason: "quota_exhausted" }, { status: 429 }),
+    });
+    const { POST } = await import("./route");
+    expect((await POST(req(await signedBody()), params("2"))).status).toBe(429);
+  });
+
+  it("firma invalida → 401 PRIMA dell'admission (mai lookup per richieste non autentiche)", async () => {
+    resolveMock.mockResolvedValueOnce({ address: "0x" + "aa".repeat(20), records: { "agent-signer": "0x" + "42".repeat(20) } });
+    const { POST } = await import("./route");
+    expect((await POST(req(await signedBody()), params("2"))).status).toBe(401);
+    expect(admissionMock).not.toHaveBeenCalled();
   });
 });

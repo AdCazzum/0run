@@ -16,6 +16,7 @@
     "@privy-io/server-auth": "^1.32.5",
     "@worldcoin/agentkit": "^0.2.0",
     "@worldcoin/idkit": "^4.2.1",
+    "@worldcoin/idkit-core": "2.1.0",
     "drizzle-orm": "^0.45.2",
     "ethers": "^6.17.0",
     "fast-xml-parser": "^5.10.1",
@@ -26,6 +27,7 @@
     "react-dom": "19.2.4",
     "react-leaflet": "^5.0.0",
     "react-markdown": "^10.1.0",
+    "react-qr-code": "^2.2.0",
     "viem": "^2.55.8"
   },
   "devDependencies": {

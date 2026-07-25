@@ -4,6 +4,8 @@ import { GALILEO } from "@0run/shared";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
 import { a2aAccount } from "@/lib/a2a/protocol";
+import { agentBookAddress } from "@/lib/world/agentbook";
+import { a2aHumanBackingEnforced } from "@/lib/world/gate";
 
 /**
  * The machine-readable face of a coach agent — what a crawler or another
@@ -35,5 +37,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ tokenId
     // The executor key authorized to sign consults FROM this agent — the
     // same address published as the ENS `agent-signer` text record.
     signer: a2aAccount()?.address ?? null,
+    // Machine-readable admission policy for the a2a endpoint: whether this
+    // deployment requires callers to be human-backed, and against which
+    // registry. Env-derived only — this route stays free of live RPC.
+    humanBacking: {
+      enforced: a2aHumanBackingEnforced(),
+      registry: { contract: agentBookAddress(), network: "eip155:480" },
+    },
   });
 }

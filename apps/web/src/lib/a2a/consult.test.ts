@@ -92,4 +92,39 @@ describe("consultCoach", () => {
     const res = await consultCoach("marco.0run.eth", "pedro.0run.eth", "q", "");
     expect(res).toMatchObject({ ok: false });
   });
+
+  it("humanBacked nella risposta del peer → passa attraverso", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          reply: "Progressivi.",
+          coach: { name: "Pedro", ensName: "pedro.0run.eth", personality: "drill-sergeant" },
+          humanBacked: { humanId: "0x1234" },
+        }),
+        { status: 200 },
+      ),
+    );
+    const res = await consultCoach("marco.0run.eth", "pedro.0run.eth", "q", "");
+    expect(res).toMatchObject({ ok: true, humanBacked: { humanId: "0x1234" } });
+  });
+
+  it("peer senza humanBacked (agente esterno) → valida comunque, humanBacked null", async () => {
+    const res = await consultCoach("marco.0run.eth", "pedro.0run.eth", "q", "");
+    expect(res).toMatchObject({ ok: true, humanBacked: null });
+  });
+
+  it("humanBacked malformato → tollerato come null, mai un errore", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          reply: "ok",
+          coach: { name: "P", ensName: "p.0run.eth", personality: "zen" },
+          humanBacked: { humanId: 42 },
+        }),
+        { status: 200 },
+      ),
+    );
+    const res = await consultCoach("marco.0run.eth", "pedro.0run.eth", "q", "");
+    expect(res).toMatchObject({ ok: true, humanBacked: null });
+  });
 });

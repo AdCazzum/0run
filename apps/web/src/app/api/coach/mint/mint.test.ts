@@ -220,7 +220,7 @@ describe("POST /api/coach/mint", () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.reason).toBe("human_backing_required");
-    expect(body.howTo).toContain("agentkit-cli register");
+    expect(body.howTo).toContain("World App");
     expect(dbState.coaches.size).toBe(0);
     expect(vi.mocked(mintCoachOnChain)).not.toHaveBeenCalled();
   });

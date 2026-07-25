@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { _setAgentBookForTest, lookupHumanId } from "./agentbook";
+import { _setAgentBookForTest, lookupHumanId, getAgentNonce, agentBookAddress } from "./agentbook";
 
 const WALLET = "0x7AEa10Ebc47CC8F2eb359B2e19a6286Ef36A59e6";
 
@@ -88,4 +88,42 @@ describe("lookupHumanId", () => {
     expect(r.humanId).toBeNull();
     expect(r.error).toMatch(/timeout/);
   }, 10_000);
+});
+
+describe("getAgentNonce", () => {
+  it("nonce dal contratto come stringa decimale", async () => {
+    _setAgentBookForTest({ lookupHuman: async () => null, getNextNonce: async () => "3" });
+    expect(await getAgentNonce("0x" + "ab".repeat(20))).toEqual({ nonce: "3" });
+  });
+
+  it("indirizzo non valido → error, mai un throw", async () => {
+    _setAgentBookForTest({ lookupHuman: async () => null, getNextNonce: async () => "0" });
+    const res = await getAgentNonce("not-an-address");
+    expect("error" in res && res.error.length > 0).toBe(true);
+  });
+
+  it("lettura che fallisce → error, mai un throw", async () => {
+    _setAgentBookForTest({
+      lookupHuman: async () => null,
+      getNextNonce: async () => {
+        throw new Error("rpc down");
+      },
+    });
+    expect(await getAgentNonce("0x" + "ab".repeat(20))).toEqual({ error: "rpc down" });
+  });
+
+  it("WORLD_AGENTBOOK_ADDRESS malformato → error, non throw", async () => {
+    vi.stubEnv("WORLD_AGENTBOOK_ADDRESS", "not-an-address");
+    _setAgentBookForTest(null); // Força realReader() al prossimo accesso
+    const res = await getAgentNonce(WALLET);
+    expect("error" in res && res.error.length > 0).toBe(true);
+    vi.unstubAllEnvs();
+    _setAgentBookForTest(null);
+  });
+});
+
+describe("agentBookAddress", () => {
+  it("default canonico quando l'env non è impostata", () => {
+    expect(agentBookAddress()).toBe("0xA23aB2712eA7BBa896930544C7d6636a96b944dA");
+  });
 });

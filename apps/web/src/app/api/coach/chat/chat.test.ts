@@ -95,6 +95,7 @@ describe("POST /api/coach/chat", () => {
       ok: true, to: "pedro.0run.eth", question: "Lunghi oltre 30km?",
       reply: "Progressivi, non oltre il 30% del volume settimanale.",
       coach: { name: "Pedro", ensName: "pedro.0run.eth", personality: "drill-sergeant" },
+      humanBacked: { humanId: "0x1234" },
     });
     directoryMock.mockClear();
   });
@@ -206,6 +207,16 @@ describe("POST /api/coach/chat", () => {
     expect(JSON.stringify(secondMessages)).toContain("Progressivi, non oltre il 30%");
     // Persistito sul turno assistant.
     expect(state.inserted[1].consult).toMatchObject({ to: "pedro.0run.eth" });
+  });
+
+  it("humanBacked del collega arriva al client e viene persistito sul turno", async () => {
+    coachCompleteMock
+      .mockResolvedValueOnce({ text: `<consult coach="pedro.0run.eth">Long runs?</consult>`, verified: null, model: "glm-5.2", path: "router" as const })
+      .mockResolvedValueOnce({ text: "Pedro says progressives.", verified: null, model: "glm-5.2", path: "router" as const });
+    const { POST } = await import("./route");
+    const body = await (await POST(req())).json();
+    expect(body.consult.humanBacked).toEqual({ humanId: "0x1234" });
+    expect(state.inserted[1].consult.humanBacked).toEqual({ humanId: "0x1234" });
   });
 
   it("consulto fallito → il coach risponde da solo, chat mai rotta, nessun blocco consult", async () => {

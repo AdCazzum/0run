@@ -53,4 +53,15 @@ describe("GET /api/coach/[tokenId]/agent.json", () => {
     expect((await GET(new Request("http://x"), params("9"))).status).toBe(404);
     expect((await GET(new Request("http://x"), params("abc"))).status).toBe(400);
   });
+
+  it("dichiara la policy di ammissione human-backed (statica, senza RPC)", async () => {
+    process.env.REQUIRE_HUMAN_BACKED_A2A = "1";
+    const { GET } = await import("./route");
+    const body = await (await GET(new Request("http://x"), params("2"))).json();
+    expect(body.humanBacking).toEqual({
+      enforced: true,
+      registry: { contract: "0xA23aB2712eA7BBa896930544C7d6636a96b944dA", network: "eip155:480" },
+    });
+    delete process.env.REQUIRE_HUMAN_BACKED_A2A;
+  });
 });
