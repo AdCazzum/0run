@@ -1,0 +1,16 @@
+{
+  "name": "0run",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w web",
+    "build": "npm run build -w web",
+    "test": "npm run test -w web"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

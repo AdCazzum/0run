@@ -2449,15 +2449,16 @@ git add scripts README.md && git commit -m "feat: demo seed, core smoke test, RE
 
 ---
 
-### Task 17: Sito pubblico (landing page)
+### Task 17: Sito pubblico (landing page + pagina technology)
 
 **Files:**
-- Create: `apps/web/src/app/page.tsx` (landing pubblica), `apps/web/src/components/landing/hero.tsx`, `apps/web/src/components/landing/manifesto.tsx`, `apps/web/src/components/landing/how-it-works.tsx`, `apps/web/src/components/landing/stack-section.tsx`, `apps/web/src/components/landing/site-footer.tsx`
+- Create: `apps/web/src/app/page.tsx` (landing pubblica), `apps/web/src/app/technology/page.tsx` (pagina tecnologia, linkata dal footer), `apps/web/src/components/landing/hero.tsx`, `apps/web/src/components/landing/manifesto.tsx`, `apps/web/src/components/landing/how-it-works.tsx`, `apps/web/src/components/landing/benefits-section.tsx`, `apps/web/src/components/landing/site-footer.tsx`
 - Test: `apps/web/src/components/landing/landing.test.tsx`
 
 **Interfaces:**
 - Consumes: `Button`, `Card`, `PageChrome` (Task 12); Privy `useLogin` (Task 11).
 - Produces: `/` pubblica (nessuna auth richiesta) che presenta il prodotto e porta al login; dopo il login redirect a `/dashboard`. È la vetrina public-facing del prodotto E del design system: i giudici la vedono prima di ogni altra cosa.
+- **Regola di copy (vincolante):** la home parla solo di vantaggi per il runner — privacy, ownership, memoria che cresce, portabilità. Vietati sulla home i termini tecnologici: NFT/iNFT, TEE, 0G, blockchain, on-chain, encrypted/encryption, GPX, wallet. Tutta la tecnologia vive su `/technology`, raggiungibile dal footer. Copy fissa da mantenere: overline "The AI running coach you own" · headline "Own your Coach. Own your runs." · heading how-it-works "Three steps to a coach that is yours."
 
 - [ ] **Step 1: Failing render test**
 
@@ -2480,11 +2481,21 @@ describe("landing", () => {
     expect(screen.getByTestId("hero-overline-line").className).toContain("h-px");
     expect(screen.getByRole("button", { name: /start running/i })).toBeTruthy();
   });
-  it("how-it-works: 3 step numerati con serif italic", () => {
+  it("how-it-works: heading fissa e 3 step numerati con serif italic", () => {
     render(<HowItWorks />);
+    expect(screen.getByText(/three steps to a coach that is/i)).toBeTruthy(); // "yours." è in un <em> annidato
+
     expect(screen.getByText("01")).toBeTruthy();
     expect(screen.getByText("02")).toBeTruthy();
     expect(screen.getByText("03")).toBeTruthy();
+  });
+  it("copy della home senza gergo tecnico", () => {
+    const { container: hero } = render(<Hero />);
+    const { container: how } = render(<HowItWorks />);
+    const text = `${hero.textContent} ${how.textContent}`.toLowerCase();
+    for (const banned of [/\bnft\b/, /\btee\b/, /\b0g\b/, /blockchain/, /on-chain/, /encrypt/, /\bgpx\b/, /wallet/]) {
+      expect(text).not.toMatch(banned);
+    }
   });
 });
 ```
@@ -2519,7 +2530,7 @@ export function Hero() {
           Own your<br /><em className="italic text-orange">Coach.</em><br />Own your runs.
         </h1>
         <p className="mt-10 max-w-md font-sans text-lg leading-relaxed text-navy">
-          Your runs, encrypted on decentralized storage. Your coach, an intelligent NFT whose memory grows with every kilometre. Private by design, verifiable by default.
+          A coach that is only yours. It remembers every run, learns how you train, and gets sharper with every kilometre. Your data stays private — nobody else can read it. Not even us.
         </p>
         <div className="mt-12 flex flex-wrap gap-6">
           <Button variant="primary" onClick={() => (authenticated ? router.push("/dashboard") : login())}>Start running</Button>
@@ -2531,19 +2542,24 @@ export function Hero() {
 }
 ```
 
-`apps/web/src/components/landing/manifesto.tsx` — sezione `border-t border-navy/15 py-24 md:py-32`, griglia 12 con testo `md:col-span-6 md:col-start-6`: paragrafo con drop cap (`first-letter:` come ReportView) che racconta il problema (Strava possiede i tuoi dati) e la tesi (ownership). `apps/web/src/components/landing/how-it-works.tsx`:
+`apps/web/src/components/landing/manifesto.tsx` — sezione `border-t border-navy/15 py-24 md:py-32`, griglia 12 con testo `md:col-span-6 md:col-start-6`: paragrafo con drop cap (`first-letter:` come ReportView) che racconta il problema e la tesi **senza gergo tecnico**: "Your running history is the story of your body. Today it lives on servers you don't control, inside apps that can change the rules overnight. 0run starts from a different premise: your runs belong to you, and so does the coach who learns from them. If you ever leave, everything leaves with you." `apps/web/src/components/landing/how-it-works.tsx`:
 
 ```tsx
 const STEPS = [
-  { n: "01", title: "Upload your run", body: "Drop a GPX. It is encrypted client-side and stored on 0G decentralized storage — only your wallet can unlock it." },
-  { n: "02", title: "Meet your coach", body: "An AI coach minted as an intelligent NFT. Analysis runs in a trusted execution environment: nobody reads your data. Not even us." },
-  { n: "03", title: "Watch it grow", body: "Every run feeds its encrypted memory, hashed on-chain. Switch apps, keep the coach. One day, lend it." },
+  { n: "01", title: "Upload your run", body: "Drag in a run from your watch or phone. It is locked away the moment it arrives — only you can open it." },
+  { n: "02", title: "Meet your coach", body: "A personal AI coach reads your run and tells you what it means: where you are improving, what to do next. Nobody else can read your data. Not even us." },
+  { n: "03", title: "Watch it grow", body: "Your coach remembers every run and knows you better each week. And it is yours for good: change apps, change devices — the coach comes with you." },
 ];
 
 export function HowItWorks() {
   return (
     <section id="how" className="border-t border-navy/15">
-      <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-12 px-8 py-24 md:grid-cols-3 md:px-16 md:py-32">
+      <div className="mx-auto max-w-[1600px] px-8 pt-24 md:px-16 md:pt-32">
+        <h2 className="font-serif text-4xl text-navy md:text-5xl">
+          Three steps to a coach that is <em className="italic text-orange">yours.</em>
+        </h2>
+      </div>
+      <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-12 px-8 py-16 md:grid-cols-3 md:px-16 md:pb-32">
         {STEPS.map((s) => (
           <div key={s.n} className="border-t border-navy p-8 transition-colors duration-700 hover:bg-peach/20 md:p-12">
             <span className="font-serif text-2xl italic text-orange">{s.n}</span>
@@ -2557,13 +2573,19 @@ export function HowItWorks() {
 }
 ```
 
-`apps/web/src/components/landing/stack-section.tsx` — sezione scura invertita (`bg-navy text-cream py-24 md:py-32`): overline "Built on 0G", headline con italic in orange ("Verifiable *by default*"), 4 voci (Storage / Compute TEE / Agentic ID / Chain) come colonne con `border-t border-cream/20` e testo muted `text-peach/80`. `apps/web/src/components/landing/site-footer.tsx` — footer `border-t border-navy`: wordmark serif "0run", micro-text `text-[10px] tracking-[0.25em] uppercase` con link (GitHub, ETHGlobal Lisbon 2026), linea decorativa. `apps/web/src/app/page.tsx`:
+`apps/web/src/components/landing/benefits-section.tsx` — sezione scura invertita (`bg-navy text-cream py-24 md:py-32`): overline "Why 0run", headline con italic in orange ("Yours, *for good.*"), 4 benefici come colonne con `border-t border-cream/20` e testo muted `text-peach/80` — **solo vantaggi, zero tecnologia**: *Truly private* ("Nobody can read your runs. Not even us.") · *Always yours* ("Your coach and your history belong to you, not to a platform.") · *Remembers everything* ("Advice built on your whole story, not last week's.") · *Proof, not promises* ("Everything your coach says can be independently checked."). In fondo alla sezione, link discreto `text-peach/80 underline-offset-4` → `/technology`: "Curious how it works under the hood? The technology →".
+
+`apps/web/src/components/landing/site-footer.tsx` — footer `border-t border-navy`: wordmark serif "0run", micro-text `text-[10px] tracking-[0.25em] uppercase` con link (**Technology** → `/technology`, GitHub, ETHGlobal Lisbon 2026), linea decorativa.
+
+`apps/web/src/app/technology/page.tsx` — pagina statica editoriale (stesso chrome della landing: max-w-[1600px], griglia 12, footer condiviso), **unico posto public-facing dove si parla di tecnologia**. Struttura: hero compatto (overline "The technology", headline serif "Verifiable *by default.*", sotto una riga che traduce: "Every promise on the home page is backed by open, inspectable infrastructure. Here is how.") · 4 sezioni con `border-t border-navy/15`, una per pilastro, ciascuna con pattern *promessa → come*: **Your data stays private** → cifratura AES-256 lato client, storage decentralizzato 0G Storage, solo il tuo wallet sblocca · **The coach is yours** → iNFT ERC-7857 "Agentic ID" su 0G Chain, memoria di proprietà del token, portabile · **Nobody reads your runs** → inferenza su 0G Compute dentro TEE con attestazione per-risposta · **Check it yourself** → ogni corsa produce hash on-chain e receipt verificabili su chainscan/storagescan (link explorer). Chiusura: CTA "Start running" (stesso login della hero) + link back "← Back home". Contenuto statico, nessun fetch: server component puro.
+
+`apps/web/src/app/page.tsx`:
 
 ```tsx
 import { Hero } from "@/components/landing/hero";
 import { Manifesto } from "@/components/landing/manifesto";
 import { HowItWorks } from "@/components/landing/how-it-works";
-import { StackSection } from "@/components/landing/stack-section";
+import { BenefitsSection } from "@/components/landing/benefits-section";
 import { SiteFooter } from "@/components/landing/site-footer";
 
 export default function Home() {
@@ -2572,19 +2594,19 @@ export default function Home() {
       <Hero />
       <Manifesto />
       <HowItWorks />
-      <StackSection />
+      <BenefitsSection />
       <SiteFooter />
     </main>
   );
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `npx vitest run -w web src/components/landing` → PASS (2 test). Verifica visiva: `/` senza login mostra la landing completa; "Start running" apre il login Privy e atterra su `/dashboard`.
+- [ ] **Step 4: Run to verify pass** — `npx vitest run -w web src/components/landing` → PASS (3 test). Verifica visiva: `/` senza login mostra la landing completa e nessun termine tecnico; "Start running" apre il login Privy e atterra su `/dashboard`; il link "Technology" nel footer porta a `/technology`, che spiega lo stack e torna alla home.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/src && git commit -m "feat(web): public landing page — editorial hero, manifesto, how-it-works, 0G stack"
+git add apps/web/src && git commit -m "feat(web): public landing (benefit-led copy) + /technology page linked from footer"
 ```
 
 ---
