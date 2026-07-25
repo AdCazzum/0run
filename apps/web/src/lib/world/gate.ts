@@ -78,9 +78,10 @@ export async function checkHumanBacking(wallet: string): Promise<GateResult> {
           error: "per possedere un coach serve dimostrare di essere una persona reale e unica",
           reason: "human_backing_required",
           wallet,
-          // The registration is a human action a service cannot perform for you:
-          // the CLI prints a link to scan in World App and a relay submits it.
-          howTo: `npx @worldcoin/agentkit-cli register ${wallet}`,
+          // Registration is a human action a service cannot perform for them —
+          // but the mint page now hosts the whole flow (HumanBackingWidget):
+          // World App on the phone, one QR, a gasless relay. No CLI.
+          howTo: "usa il riquadro 'verify with World App' qui sopra: scansiona il QR col telefono e approva",
           note: "consultare i coach di altri resta libero: il vincolo è sulla proprietà di un agente, non sull'accesso",
         },
         { status: 403 },

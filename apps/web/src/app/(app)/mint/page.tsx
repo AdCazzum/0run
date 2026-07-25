@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useUserKey } from "@/lib/client/useUserKey";
+import { HumanBackingWidget } from "@/components/world/human-backing-widget";
 
 const PERSONALITIES: { id: Personality; title: string }[] = [
   { id: "pacer", title: "The Pacer" },
@@ -243,6 +244,11 @@ export default function MintPage() {
           </div>
 
           <div className="max-w-md">
+            {ready && authenticated && (
+              <div className="mb-6">
+                <HumanBackingWidget />
+              </div>
+            )}
             {error && (
               <div className="mb-6 flex items-start gap-4">
                 <span aria-hidden className="mt-1 h-px w-8 shrink-0 bg-orange md:w-12" />
@@ -250,12 +256,7 @@ export default function MintPage() {
                   <p className="font-sans text-sm leading-relaxed text-orange">{error}</p>
                   {howTo && (
                     <>
-                      <p className="mt-4 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean">
-                        Run this, then scan the link in World App
-                      </p>
-                      <code className="mt-2 block overflow-x-auto rounded-xl bg-white/45 px-4 py-3 font-mono text-xs text-navy">
-                        {howTo.howTo}
-                      </code>
+                      <p className="mt-4 font-sans text-sm leading-relaxed text-navy">{howTo.howTo}</p>
                       {howTo.note && (
                         <p className="mt-3 font-sans text-sm leading-relaxed text-ocean">{howTo.note}</p>
                       )}
