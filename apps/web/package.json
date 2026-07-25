@@ -28,6 +28,7 @@
     "react-leaflet": "^5.0.0",
     "react-markdown": "^10.1.0",
     "react-qr-code": "^2.2.0",
+    "remark-gfm": "^4.0.1",
     "viem": "^2.55.8"
   },
   "devDependencies": {

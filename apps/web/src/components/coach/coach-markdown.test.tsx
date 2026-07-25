@@ -26,6 +26,25 @@ describe("CoachMarkdown", () => {
     expect(container.textContent).toContain("<img");
   });
 
+  it("rende le tabelle GFM come vere <table> scrollabili, non testo con le pipe", () => {
+    const md = [
+      "| Date | Distance | Pace |",
+      "|------|----------|------|",
+      "| Jul 18 | 9.13 km | 5:45/km |",
+      "| Jul 21 | 12.35 km | 6:46/km |",
+    ].join("\n");
+    const { container } = render(<CoachMarkdown>{md}</CoachMarkdown>);
+    const table = container.querySelector("table");
+    expect(table).not.toBeNull();
+    expect(container.querySelectorAll("th")).toHaveLength(3);
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(screen.getByText("5:45/km").tagName).toBe("TD");
+    // Niente pipe residue renderizzate come testo.
+    expect(container.textContent).not.toContain("|");
+    // Il wrapper scrolla in orizzontale invece di rompere il layout della chat.
+    expect(table!.parentElement!.className).toContain("overflow-x-auto");
+  });
+
   it("scarta gli href non http(s)", () => {
     const { container } = render(
       <CoachMarkdown>{"[clicca](javascript:alert(1)) e [vero](https://0run.fun)"}</CoachMarkdown>,
