@@ -6,8 +6,19 @@ import { Input } from "@/components/ui/input";
 import { useUserKey } from "@/lib/client/useUserKey";
 import { CoachMarkdown } from "@/components/coach/coach-markdown";
 
-type Consult = { to: string; toTokenId: string | null; question: string; reply: string; coachName: string };
+type Consult = {
+  to: string;
+  toTokenId: string | null;
+  question: string;
+  reply: string;
+  coachName: string;
+  humanBacked?: { humanId: string } | null;
+};
 type Turn = { role: "user" | "assistant"; content: string; consult?: Consult };
+
+// The humanId is an anonymous on-chain identifier; shown truncated because
+// it's a badge, not a datum — the full value is one lookup away for anyone.
+const shortHumanId = (id: string) => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 
 /**
  * One chat implementation for both surfaces. With `runId` the API pins that run
@@ -78,6 +89,11 @@ export function Chat({ runId }: { runId?: number }) {
                       turn.consult.to
                     )}{" "}
                     · verified via ENS
+                    {turn.consult.humanBacked && (
+                      <span title={`humanId ${shortHumanId(turn.consult.humanBacked.humanId)}`}>
+                        {" "}· unique human ✓
+                      </span>
+                    )}
                   </p>
                   <p className="mb-2 font-sans text-sm italic text-navy/80">→ {turn.consult.question}</p>
                   <div className="flex items-start gap-3">
