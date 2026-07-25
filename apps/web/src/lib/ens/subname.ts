@@ -3,7 +3,15 @@ import { sepolia } from "viem/chains";
 import { ethers } from "ethers";
 import { GALILEO } from "@0run/shared";
 
-export type AssignSubnameRecords = { tokenId: string; endpoint: string; avatar: string };
+export type AssignSubnameRecords = {
+  tokenId: string;
+  endpoint: string;
+  avatar: string;
+  a2aEndpoint: string;
+  // Address of A2A_SIGNER_PRIVATE_KEY, or null when that env is unset — the
+  // record is simply skipped then; the coach still mints and resolves.
+  signer: string | null;
+};
 type Result = { name: string; txHash: string } | { error: string };
 
 /**
@@ -125,8 +133,45 @@ export async function assignSubname(label: string, owner: string, records: Assig
       // though the portrait is generated a moment later by another background
       // step; until then it simply 404s, and it starts working on its own.
       iface.encodeFunctionData("setText", [node, "avatar", records.avatar]),
+      // A2A: the machine-callable consult endpoint, and the executor key
+      // authorized to sign consults FROM this agent. Publishing the signer in
+      // ENS is what lets a receiving agent verify a request with nothing but
+      // a name resolution — ENS as the auth registry, not just naming.
+      iface.encodeFunctionData("setText", [node, "agent-endpoint[a2a]", records.a2aEndpoint]),
+      ...(records.signer ? [iface.encodeFunctionData("setText", [node, "agent-signer", records.signer])] : []),
     ];
 
+    const tx = await resolver.multicall(calls);
+    const receipt = await tx.wait();
+    return { name: fullName, txHash: receipt.hash };
+  } catch (e: any) {
+    return { error: e.message ?? String(e) };
+  }
+}
+
+/**
+ * Writes/overwrites text records for an EXISTING `<label>.0run.eth` name in
+ * one multicall — the backfill path for records introduced after a coach was
+ * minted. Same never-throws receipt discipline as assignSubname; deliberately
+ * no setAddr (ownership may have moved; text records are ours to maintain).
+ */
+export async function setTextRecords(fullName: string, texts: Record<string, string>): Promise<Result> {
+  try {
+    const parent = process.env.ENS_PARENT_NAME;
+    const pk = process.env.ENS_OWNER_PRIVATE_KEY;
+    const rpcUrl = process.env.ENS_SEPOLIA_RPC;
+    if (!parent || !pk || !rpcUrl) {
+      return { error: "configurazione ENS incompleta (ENS_PARENT_NAME/ENS_OWNER_PRIVATE_KEY/ENS_SEPOLIA_RPC)" };
+    }
+    const node = namehash(fullName);
+    const resolverAddress = await client().getEnsResolver({ name: parent });
+    if (!resolverAddress) return { error: `nessun resolver trovato per ${parent}` };
+
+    const wallet = new ethers.Wallet(pk, new ethers.JsonRpcProvider(rpcUrl));
+    const resolver = new ethers.Contract(resolverAddress, RESOLVER_ABI, wallet);
+    const calls = Object.entries(texts).map(([key, value]) =>
+      resolver.interface.encodeFunctionData("setText", [node, key, value]),
+    );
     const tx = await resolver.multicall(calls);
     const receipt = await tx.wait();
     return { name: fullName, txHash: receipt.hash };

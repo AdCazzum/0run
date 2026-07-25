@@ -10,6 +10,7 @@ import { prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { mintCoachOnChain, updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
 import { registerAgent } from "@/lib/erc8004/register";
 import { assignSubname, slugifyLabel } from "@/lib/ens/subname";
+import { a2aAccount } from "@/lib/a2a/protocol";
 import { buildAvatarPrompt, generateAvatar } from "@/lib/avatar/generate";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
@@ -329,6 +330,8 @@ export async function POST(req: Request) {
         tokenId,
         endpoint: `${SITE_URL}/coach/${tokenId}`,
         avatar: `${SITE_URL}/api/coach/${tokenId}/avatar`,
+        a2aEndpoint: `${SITE_URL}/api/coach/${tokenId}/a2a`,
+        signer: a2aAccount()?.address ?? null,
       })
         .then(async (result) => {
           if ("error" in result) {
