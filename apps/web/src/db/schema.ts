@@ -38,6 +38,12 @@ export const coaches = pgTable("coaches", {
   // mid-flight (crash, restart, misconfiguration), so the next attempt may
   // reclaim it instead of the user being locked out of minting forever.
   reservedAt: timestamp("reserved_at").defaultNow().notNull(),
+  // ERC-8004 IdentityRegistry agentId (see lib/erc8004/register.ts), filled
+  // in by a best-effort background step after the mint. Nullable: rows
+  // minted before this column existed predate it, and a coach the ERC-8004
+  // registration failed for is still a fully valid coach — this is a bonus
+  // identity, never a requirement to mint.
+  agentId: text("agent_id"),
 });
 
 export const runs = pgTable("runs", {

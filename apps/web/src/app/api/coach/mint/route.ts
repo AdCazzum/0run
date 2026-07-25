@@ -7,6 +7,7 @@ import { encryptJson } from "@/lib/crypto/aes";
 import { serviceKey } from "@/lib/crypto/keys";
 import { prepareEncryptedUpload } from "@/lib/zerog/storage";
 import { mintCoachOnChain, updateRegistry, toBytes32 } from "@/lib/zerog/contracts";
+import { registerAgent } from "@/lib/erc8004/register";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -192,6 +193,27 @@ export async function POST(req: Request) {
         .catch((e) => console.error("mint: background upload crashed", e));
     };
 
+    // Fires the ERC-8004 IdentityRegistry registration in the background, same
+    // lane as startBackgroundUpload above: it is a bonus identity on top of an
+    // already-minted, already-usable coach, so it must never slow down or fail
+    // the mint response. registerAgent() itself never throws (see
+    // lib/erc8004/register.ts), but the DB write around it still needs its own
+    // try/catch — a crash there must not take down the background task queue.
+    // The page at this URL may not exist yet; the URI is recorded as-is
+    // regardless, same as any ERC-721 tokenURI pointing at a page that ships later.
+    const startBackgroundRegistration = (tokenId: string) => {
+      registerAgent(tokenId, `https://0run.fun/coach/${tokenId}`)
+        .then(async (result) => {
+          if ("error" in result) {
+            console.error("mint: background ERC-8004 registration failed", result.error);
+            return;
+          }
+          console.log("mint: background ERC-8004 registration ok", result.agentId, result.txHash);
+          await db.update(coaches).set({ agentId: result.agentId }).where(eq(coaches.userId, user.userId));
+        })
+        .catch((e) => console.error("mint: background ERC-8004 registration crashed", e));
+    };
+
     const finalizeMinted = async (tokenId: string, txHash: string) => {
       // Writing tokenId here is also what takes the row out of reach of the stale
       // reclaim above, so it must be part of this single update, never a later one.
@@ -199,6 +221,7 @@ export async function POST(req: Request) {
         .set({ tokenId, mintTx: txHash, memoryRoot: memPrep.rootHash, profileRoot: profPrep.rootHash, memoryCipher: memCt })
         .where(eq(coaches.userId, user.userId));
       startBackgroundUpload();
+      startBackgroundRegistration(tokenId);
     };
 
     const mintPromise = runMint(user.wallet, dataDescription, dataHash, memPrep.rootHash, profPrep.rootHash);

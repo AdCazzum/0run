@@ -164,3 +164,55 @@ Script throwaway in `/tmp` (mai committato), eseguito con la sola treasury key (
 4. Verifica post-tx: `hasClaimed(1, treasury) == true`, `claimantsOf(1) == [treasury.address]`.
 
 **Esito: SUCCESSO.** Nessun revert `"bad signature"` — il digest Solidity e quello backend combaciano byte-per-byte contro il contratto realmente deployato, non solo nei mock del test Hardhat locale.
+
+## ERC-8004 IdentityRegistry — registrazione dell'agent coach (Piano B, Task 4)
+
+**Data:** 2026-07-25
+**Contesto:** ogni coach mintato viene registrato anche sul registry ERC-8004 IdentityRegistry, già deployato su Galileo (nessun contratto nostro). Il bando 0G parla esplicitamente di "Agentic ID" ed è ERC-8004-compatible: questo task copre quel deliverable a costo quasi nullo.
+
+### Fonte dell'ABI — NON indovinato
+
+Un ABI sbagliato fallisce solo a runtime on-chain, quindi l'interfaccia è stata stabilita PRIMA di scrivere codice, con tre fonti indipendenti:
+
+1. **Reference implementation** clonata shallow in `/tmp` (mai committata): `github.com/erc-8004/erc-8004-contracts` (commit `68fc676`, "Merge pull request #83 from Wilbert957/feat/add-0g-mainnet"). File rilevanti: `contracts/IdentityRegistryUpgradeable.sol`, `abis/IdentityRegistry.json`.
+2. Il `README.md` di quel repo elenca esplicitamente una sezione **"0G Galileo Testnet"** con gli stessi indirizzi già forniti nel piano — conferma indipendente che questo è il deploy giusto:
+   - IdentityRegistry `0x8004A818BFB912233c491871b3d84c89A494BD9e`
+   - ReputationRegistry `0x8004B663056A597Dffe9eCcC1965A193B7388713`
+3. **Cross-check live** contro il bytecode realmente deployato su Galileo, in sola lettura (`eth_call`, nessun gas speso), da uno script throwaway in `/tmp`:
+   - `eth_getCode` non vuoto su entrambi gli indirizzi (262 caratteri hex — pattern da proxy UUPS, coerente con `IdentityRegistryUpgradeable`).
+   - `getVersion()` → `"2.0.0"` — combacia col sorgente.
+   - `name()` → `"AgentIdentity"`, `symbol()` → `"AGENT"` — combaciano col sorgente ERC-721.
+   - `register(agentURI, metadata).staticCall({from: treasury})` → ha restituito `agentId = 148` **senza revert**, confermando che il selettore chiamato da questo file è esattamente quello implementato dal bytecode deployato (non solo dal sorgente su GitHub).
+
+### Firma esatta usata
+
+```solidity
+struct MetadataEntry { string metadataKey; bytes metadataValue; }
+function register(string memory agentURI, MetadataEntry[] memory metadata) external returns (uint256 agentId);
+event Registered(uint256 indexed agentId, string agentURI, address indexed owner);
+```
+
+Implementata in `apps/web/src/lib/erc8004/register.ts` come:
+
+```ts
+const IDENTITY_REGISTRY_ABI = [
+  "function register(string agentURI, tuple(string metadataKey, bytes metadataValue)[] metadata) returns (uint256 agentId)",
+  "event Registered(uint256 indexed agentId, string agentURI, address indexed owner)",
+];
+export async function registerAgent(tokenId: string, agentUri: string): Promise<{agentId:string;txHash:string}|{error:string}>
+```
+
+`registerAgent` non lancia mai (stessa disciplina di `lib/zerog/storage.ts`) e non è mai sul path della request di mint: parte in background da `apps/web/src/app/api/coach/mint/route.ts`, nella stessa lane fire-and-forget dell'upload Storage, dopo che il mint on-chain è già confermato. Il `tokenId` del coach (da `OrunAgentNFT`, contratto separato — vedi `lib/zerog/contracts.ts`) viene scritto come metadata **on-chain** (`"0run.tokenId"`) tramite l'overload a 3 argomenti, così le due identità sono collegabili on-chain e non solo per convenzione nell'URL. `agentId` è persistito su `coaches.agent_id` (colonna additiva nullable).
+
+### Registrazione reale su Galileo — non solo mock
+
+Script throwaway in `/tmp` (mai committato) ha importato direttamente `apps/web/src/lib/erc8004/register.ts` (nessuna modifica al file) e chiamato `registerAgent("3", "https://0run.fun/coach/3")` con la sola treasury key (`0x7CAd48f536fC2d23dEa4756d6C601f9C065B6877`).
+
+- Tx: [`0x8b571001e567be0bb27c8650fc819b3fcb1e5dea54f9ed1057c634fa6fde9c40`](https://chainscan-galileo.0g.ai/tx/0x8b571001e567be0bb27c8650fc819b3fcb1e5dea54f9ed1057c634fa6fde9c40) (status 1, block 45877805, gasUsed 162727).
+- **`agentId = 148`**.
+- Verifica di lettura post-tx, con chiamate `eth_call` dirette e indipendenti (non solo il valore di ritorno della funzione appena chiamata):
+  - `ownerOf(148)` == treasury ✓
+  - `tokenURI(148)` == `"https://0run.fun/coach/3"` ✓ (l'URI passato è stato scritto correttamente)
+  - `getMetadata(148, "0run.tokenId")` decodifica UTF-8 a `"3"` ✓ (il collegamento on-chain tra le due identità funziona)
+
+**Esito: SUCCESSO.** Nessun revert, nessuna ABI indovinata — l'interfaccia usata è stata confermata contro il sorgente, contro il README del deploy 0G, e contro il bytecode realmente in esecuzione su Galileo prima ancora di scrivere `register.ts`.
