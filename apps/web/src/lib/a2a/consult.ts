@@ -5,7 +5,16 @@ import { signConsult, type ConsultPayload } from "./protocol";
 export const A2A_TIMEOUT_MS = 45_000;
 
 export type ConsultResult =
-  | { ok: true; to: string; question: string; reply: string; coach: { name: string; ensName: string; personality: string } }
+  | {
+      ok: true;
+      to: string;
+      question: string;
+      reply: string;
+      coach: { name: string; ensName: string; personality: string };
+      // Set when the peer attested (and we display) the unique human behind
+      // it; null for peers that don't send it — tolerated, never required.
+      humanBacked: { humanId: string } | null;
+    }
   | { ok: false; error: string };
 
 /**
@@ -65,7 +74,11 @@ export async function consultCoach(from: string, to: string, question: string, c
     ) {
       return { ok: false, error: "risposta del coach remoto malformata" };
     }
-    return { ok: true, to, question, reply: body.reply, coach: body.coach };
+    const humanBacked =
+      body.humanBacked && typeof body.humanBacked.humanId === "string"
+        ? { humanId: body.humanBacked.humanId as string }
+        : null;
+    return { ok: true, to, question, reply: body.reply, coach: body.coach, humanBacked };
   } catch (e: any) {
     return { ok: false, error: e.message ?? String(e) };
   }
