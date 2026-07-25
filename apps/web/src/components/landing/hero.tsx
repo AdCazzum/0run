@@ -1,14 +1,39 @@
 "use client";
+import Link from "next/link";
 import { useLogin, usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { usePrivyReady } from "@/app/providers";
 
-export function Hero() {
+/**
+ * The Privy hooks live here, in a component that is only ever rendered when the
+ * provider is actually mounted. Calling them unconditionally made this public
+ * page return a 500 whenever NEXT_PUBLIC_PRIVY_APP_ID was missing — hooks cannot
+ * be called behind an `if`, so the branch has to be a component boundary.
+ */
+function StartWithLogin() {
   const { authenticated } = usePrivy();
   const router = useRouter();
   const { login } = useLogin({ onComplete: () => router.push("/dashboard") });
+  return (
+    <Button variant="primary" onClick={() => (authenticated ? router.push("/dashboard") : login())}>
+      Start running
+    </Button>
+  );
+}
 
-  const handleStart = () => (authenticated ? router.push("/dashboard") : login());
+/** Auth is not configured in this build: still offer the destination, never a dead button. */
+function StartWithoutLogin() {
+  return (
+    <Link href="/dashboard">
+      <Button variant="primary">Start running</Button>
+    </Link>
+  );
+}
+
+export function Hero() {
+  const privyReady = usePrivyReady();
+
   const handleHowItWorks = () =>
     document.getElementById("how")?.scrollIntoView({ behavior: "smooth" });
 
@@ -45,9 +70,7 @@ export function Hero() {
           even us.
         </p>
         <div className="mt-10 flex flex-wrap gap-6">
-          <Button variant="primary" onClick={handleStart}>
-            Start running
-          </Button>
+          {privyReady ? <StartWithLogin /> : <StartWithoutLogin />}
           <Button variant="link" onClick={handleHowItWorks}>
             How it works
           </Button>
