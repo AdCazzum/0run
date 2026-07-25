@@ -81,16 +81,19 @@ export function Chat({ runId }: { runId?: number }) {
                 // distinct from user/coach bubbles on purpose — this is a
                 // conversation between two agents, shown, not summarized.
                 <div className="rounded-2xl border border-dashed border-ocean/60 p-4">
-                  <p className="mb-3 font-sans text-[10px] uppercase tracking-[0.3em] text-ocean">
+                  <p className="mb-3 font-sans text-xs uppercase tracking-[0.3em] text-navy/60">
                     coach-to-coach consult ·{" "}
                     {turn.consult.toTokenId ? (
                       <a className="underline" href={`/coach/${turn.consult.toTokenId}`}>{turn.consult.to}</a>
                     ) : (
                       turn.consult.to
                     )}{" "}
-                    · verified via ENS
+                    <span className="font-semibold text-ocean">· verified via ENS</span>
                     {turn.consult.humanBacked && (
-                      <span title={`humanId ${shortHumanId(turn.consult.humanBacked.humanId)}`}>
+                      <span
+                        className="font-semibold text-emerald-700"
+                        title={`humanId ${shortHumanId(turn.consult.humanBacked.humanId)}`}
+                      >
                         {" "}· unique human ✓
                       </span>
                     )}
