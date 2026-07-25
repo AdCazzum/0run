@@ -141,7 +141,7 @@ const params = (id = "7") => ({ params: Promise.resolve({ id }) });
 
 beforeEach(() => {
   const { memory } = initialMemory("K", "coach", "trail ultras");
-  state.runRows = [{ id: 7, userId: 1, status: "done", gpxRoot: GPX_ROOT }];
+  state.runRows = [{ id: 7, userId: 1, status: "done", gpxRoot: GPX_ROOT, createdAt: new Date() }];
   state.coachRows = [
     {
       id: 1, userId: 1, tokenId: "3", name: "K", personality: "coach",
@@ -194,12 +194,23 @@ describe("DELETE /api/runs/[id]", () => {
   });
 
   it("una corsa ancora in elaborazione NON si cancella: la pipeline la riscriverebbe dentro", async () => {
-    state.runRows = [{ id: 7, userId: 1, status: "processing", gpxRoot: null }];
+    state.runRows = [{ id: 7, userId: 1, status: "processing", gpxRoot: null, createdAt: new Date() }];
     const { DELETE } = await import("./route");
     const res = await DELETE(req(), params());
     expect(res.status).toBe(409);
     expect((await res.json()).reason).toBe("run_processing");
     expect(state.deleted).toHaveLength(0);
+  });
+
+  it("una corsa 'processing' da troppo tempo NON è più viva: si può cancellare", async () => {
+    // La pipeline vive nel processo del server: un riavvio la uccide e la riga
+    // resta 'processing' per sempre. Rifiutare anche quella sarebbe una trappola.
+    state.runRows = [
+      { id: 7, userId: 1, status: "processing", gpxRoot: null, createdAt: new Date(Date.now() - 30 * 60_000) },
+    ];
+    const { DELETE } = await import("./route");
+    expect((await DELETE(req(), params())).status).toBe(200);
+    expect(state.deleted).toHaveLength(1);
   });
 
   it("se qualcun altro ha riscritto la memoria nel frattempo → 409, niente cancellato", async () => {

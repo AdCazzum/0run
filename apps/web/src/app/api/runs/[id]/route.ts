@@ -33,6 +33,17 @@ const DeleteBody = z.object({
 const MAX_RUN_ID = 2_147_483_647;
 
 /**
+ * Past this, a row still marked "processing" is not a live job.
+ *
+ * The pipeline runs inside the server process, so a restart — a deploy, a crash
+ * — kills it and leaves the row exactly as it was. Refusing to delete those
+ * would be a trap: the run can never finish AND can never be removed. The
+ * bound is generous on purpose (uploads are capped at 3x120s per layer, plus
+ * inference), so a job that really is alive is never mistaken for a dead one.
+ */
+const STALLED_AFTER_MS = 15 * 60_000;
+
+/**
  * Deletes a run.
  *
  * Order matters, and it is: rewrite the memory first, delete the row second. If
@@ -86,11 +97,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     // Deleting it here would race that: the pipeline appends it to the memory
     // moments later, leaving the run inside the coach's head with no row left
     // to remove it — permanently. Refuse, and say when to come back.
-    if (run.status === "processing") {
+    const processingFor = Date.now() - new Date(run.createdAt).getTime();
+    if (run.status === "processing" && processingFor < STALLED_AFTER_MS) {
       return NextResponse.json(
         {
           error: "questa corsa è ancora in elaborazione: attendi che finisca, poi eliminala",
           reason: "run_processing",
+          processingForMs: processingFor,
         },
         { status: 409 },
       );

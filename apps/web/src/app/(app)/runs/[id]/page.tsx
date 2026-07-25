@@ -77,6 +77,12 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
     return () => { cancelled = true; };
   }, [run?.id, run?.feelingsCipher, getKeyHex]);
 
+  // Longer than the pipeline can possibly take: uploads are capped at 3x120s
+  // per layer and inference at ~2 minutes, so past this a "processing" row is a
+  // job nobody is running any more.
+  const STALLED_AFTER_MS = 15 * 60_000;
+  const stalled = !!run && run.status === "processing" && Date.now() - new Date(run.createdAt).getTime() > STALLED_AFTER_MS;
+
   if (!ready) return null;
   if (error) return <Label>{error}</Label>;
   if (!run) return <Label>loading this run…</Label>;
@@ -90,9 +96,24 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
         ← all runs
       </Link>
 
-      {run.status === "processing" && (
+      {run.status === "processing" && !stalled && (
         <section className="mt-6 border-t border-navy pt-8">
           <Label>The coach is working</Label>
+          <div className="mt-8 max-w-md"><PipelineSteps steps={run.steps} /></div>
+        </section>
+      )}
+
+      {/* A run left mid-flight is not a run still being worked on. The pipeline
+          lives in the server process, so a restart (a deploy, a crash) kills it
+          and the row stays "processing" for ever — telling the athlete their
+          coach is still reading is simply false after a while. */}
+      {run.status === "processing" && stalled && (
+        <section className="mt-6 border-t border-navy pt-8">
+          <Label>This run stopped part-way</Label>
+          <p className="mt-6 max-w-md font-sans text-sm leading-relaxed text-navy">
+            Processing was interrupted — most likely the server restarted while your coach was reading it. It will not
+            resume on its own: delete it below and upload the file again.
+          </p>
           <div className="mt-8 max-w-md"><PipelineSteps steps={run.steps} /></div>
         </section>
       )}
@@ -106,7 +127,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
 
       <div className="mt-8 grid grid-cols-1 gap-y-10 md:mt-12 md:grid-cols-12 md:gap-x-8">
         <div className="md:col-span-5">
-          <RunMap polyline={run.polyline} />
+          <RunMap polyline={run.polyline} muted={run.status === "processing"} />
           {run.stats && (
             <dl className="mt-6 grid grid-cols-2 gap-y-6 font-sans text-[10px] uppercase tracking-[0.25em] text-ocean md:mt-8">
               <Stat label="distance" value={`${run.stats.distanceKm.toFixed(2)} km`} />
@@ -148,7 +169,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       {/* Not offered while the run is still being written: the server refuses
           it anyway (the pipeline would re-add the run seconds later), and a
           button that only ever answers "wait" is worse than no button. */}
-      {run.status !== "processing" && <DeleteRun runId={run.id} />}
+      {(run.status !== "processing" || stalled) && <DeleteRun runId={run.id} />}
     </section>
   );
 }

@@ -20,7 +20,7 @@ const NAVY = "#004E89";
  * when a run has no polyline (e.g. a GPX with no track points) — never a
  * MapContainer with nothing in it pretending to be data.
  */
-export function RunMap({ polyline }: { polyline: [number, number][] | null }) {
+export function RunMap({ polyline, muted = false }: { polyline: [number, number][] | null; muted?: boolean }) {
   if (!polyline || polyline.length === 0) {
     return (
       <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden border border-navy/15 bg-peach/20 shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
@@ -36,7 +36,14 @@ export function RunMap({ polyline }: { polyline: [number, number][] | null }) {
 
   return (
     <div className="group relative aspect-[4/5] overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
-      <div className="absolute inset-0 grayscale transition-[filter] duration-[1500ms] group-hover:grayscale-0">
+      {/* Desaturated only while the run is still being processed: it reads as
+          "not finished yet". Once the coach is done the route is the athlete's
+          result, and it stays in full colour without asking for a hover. */}
+      <div
+        className={`absolute inset-0 transition-[filter] duration-[1500ms] ${
+          muted ? "grayscale group-hover:grayscale-0" : ""
+        }`}
+      >
         <MapContainer
           bounds={bounds}
           boundsOptions={{ padding: [16, 16] }}
