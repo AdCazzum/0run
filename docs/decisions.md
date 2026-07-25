@@ -60,3 +60,62 @@ Passi eseguiti:
 - `@openzeppelin/contracts` pinnato a `5.0.2` esatto in `contracts/package.json` (non `^5.6.1`) per evitare la dipendenza da `mcopy`/Cancun in `Strings.sol`/`Bytes.sol`, mantenendo comunque `_requireOwned` (introdotto in OZ 5.0).
 - Nessun deploy eseguito su `zgTestnet` (wallet senza fondi, come da amendment del controller). `contracts/scripts/deploy.ts` è pronto e verificato solo sulla rete locale Hardhat in-memory.
 - `AGENT_NFT_ADDRESS` / `COACH_REGISTRY_ADDRESS` in `.env` restano da compilare quando si eseguirà il deploy reale su Galileo (fuori scope di questo task).
+
+## Deploy reale su Galileo + spike 0G Storage/inference (dati reali)
+
+**Data:** 2026-07-25
+**Contesto:** treasury `0x7CAd48f536fC2d23dEa4756d6C601f9C065B6877` finanziato con 6 OG. Deploy reale eseguito, sanity-check on-chain, spike di storage e inferenza con dati reali (non mock).
+
+### A. Deploy contratti (rete `zgTestnet`, chainId 16602)
+
+| Contratto | Indirizzo | Explorer |
+|---|---|---|
+| `OrunAgentNFT` (`AGENT_NFT_ADDRESS`) | `0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e` | https://chainscan-galileo.0g.ai/address/0x3df1e8029ce2360ABdfECD0fcc966B04F76eaf9e |
+| `CoachRegistry` (`COACH_REGISTRY_ADDRESS`) | `0x08b3a841393ab09A4C902800C55d24e6AF66945f` | https://chainscan-galileo.0g.ai/address/0x08b3a841393ab09A4C902800C55d24e6AF66945f |
+
+Entrambi scritti in `.env`. `eth_getCode` confermato non vuoto su entrambi al momento del deploy.
+
+Tx di deploy:
+- `OrunAgentNFT`: `0x787a4b08b2d02e536df79c0461e3c09aaacc73886f83405053e90d94d262c943` (block 45803362, gasUsed 1176655) — https://chainscan-galileo.0g.ai/tx/0x787a4b08b2d02e536df79c0461e3c09aaacc73886f83405053e90d94d262c943
+- `CoachRegistry`: `0x4a125c951f3608a5c350eaf60380df46c23a74a751773a031925ecbcb14964a5` (block 45803377, gasUsed 180410) — https://chainscan-galileo.0g.ai/tx/0x4a125c951f3608a5c350eaf60380df46c23a74a751773a031925ecbcb14964a5
+
+Sanity-call dal signer treasury (che coincide col deployer/backend):
+- `CoachRegistry.update(1, keccak256("m1"), keccak256("p1"))` → tx `0x5d3ebbc6dbd2e35085ebc86df8bccb6e286b61b13d6b438a55a924987026d812` (block 45803643, gas 90884). Lettura `memoryOf(1)`: `memoryRoot=0x83267a439473d40c510063b30f7c06d1e3bf496ea5e34c5e3290dfc7dc527ce1`, `profileRoot=0x260e065801cba6ca065f28640c3d94ef235f67db5431448aae1a51af7214efaf`, `runCount=1` ✓ (asserzione passata).
+- `OrunAgentNFT.mint([{dataDescription:"0g://storage/0xtest", dataHash:keccak256("ct")}], treasury)` → tx `0x28b9c02e26e8735d3ab9e474a49669069a21f0e1e6898f2cd2c05def1a24799d` (block 45803672, gas 144114), `tokenId=1`. `intelligentDatasOf(1)` combacia, `ownerOf(1)==treasury` ✓ (asserzioni passate).
+- Costo combinato update+mint: 0.000939992001644986 OG (balance 5.994571739990500545 → 5.993631747988855559).
+
+### B. Spike 0G Storage — round trip reale: BLOCCATO su finalità, non fake
+
+Script throwaway (`/tmp`, mai committato) ha importato direttamente `apps/web/src/lib/zerog/storage.ts` (nessuna modifica al file) e chiamato `uploadEncrypted()` su una fixture GPX reale (`scripts/fixtures/real/20260721-093240-Running-21-7-2026-10-32-6765CE8D.gpx`, 658359 byte) con chiave simmetrica random a 32 byte.
+
+**Evidenza di invio on-chain reale** (non fabbricata):
+- Nonce treasury: 4 → 6 (2 tx minate) durante la finestra di upload.
+- Balance treasury: 5.993631747988855559 → 5.991155480096399 OG (delta **-0.002476267892456363 OG**, interamente attribuibile all'upload — nessun'altra attività nel mezzo).
+- `dataMerkleRoot` osservato in modo stabile per l'intera finestra (~24 minuti) nel trace di debug interno dell'SDK, e **riconfermato con una chiamata diretta `zgs_getFileInfo` allo storage node** (`http://34.83.53.209:5678`) al momento della stesura di questo report: `rootHash = 0x2bd3d835b4b8b681949495646ef5703002ac6f1a0df25be28c176d48541994c4`, `size=658376` byte (== 658359 raw + 17 byte header di cifratura SDK, combacia).
+- `finalized: false` in **ogni** osservazione, inclusa quella finale diretta.
+
+**Esito:** `uploadEncrypted()` **non è mai tornato** (né `ok:true` né `ok:false`) entro ~24 minuti di wall-clock reale. Causa root: `Uploader.waitForLogEntry()` nell'SDK (`node_modules/@0gfoundation/0g-storage-ts-sdk/lib.esm/transfer/Uploader.js`, funzione `waitForLogEntry`) fa polling ogni 1s in un `while(true)` **senza alcun retry cap** quando `finalityRequired` è true — quindi la nostra funzione `doUpload`/`uploadEncrypted` resta bloccata finché lo storage node non segnala `finalized:true`, che sulla rete reale Galileo non è avvenuto in questa finestra. Il processo background è stato infine terminato dall'harness (~24 min).
+
+Di conseguenza:
+- **Nessun `txHash` catturato** dal valore di ritorno della funzione (non è mai tornata `ok:true`).
+- **`downloadDecrypted()` mai tentato** (per istruzione esplicita: non aspettare indefinitamente né inventare risultati).
+- **Verifica byte-identici non eseguita.**
+- Storage-explorer URL di riferimento (probabilmente non ancora indicizzato, dato `finalized:false`): https://storagescan-galileo.0g.ai/file?root=0x2bd3d835b4b8b681949495646ef5703002ac6f1a0df25be28c176d48541994c4
+
+**Rischio demo critico (follow-up richiesto per chi possiede `apps/web`):** qualunque flusso applicativo che chiama `uploadEncrypted()` in modo sincrono/bloccante (es. dentro una request HTTP) rischia di restare appeso per **20+ minuti** su rete reale, con nessun timeout interno lato SDK. Raccomandazione: disaccoppiare l'upload da request/response (fire-and-forget + job/poll separato con timeout esplicito lato app), non affidarsi al ritorno sincrono di `uploadEncrypted()` per l'esperienza utente in demo dal vivo.
+
+### C. Spike inferenza — round trip reale: SUCCESSO al primo tentativo
+
+Script throwaway ha usato `apps/web/src/lib/gpx/parse.ts` per parsare una fixture GPX reale (`scripts/fixtures/real/20260722-104118-Running-22-7-2026-11-41-A0DDBE46.gpx` → 9.969 km, 3968s, pace medio 398 sec/km, 9 split, HR assente), costruito i messaggi con `buildReportMessages()` per un profilo `drill_sergeant` (con 2 run precedenti sintetiche di contesto per il confronto), e chiamato `completeJson(ReportSchema, messages, retries=2)` dal servizio reale `apps/web/src/lib/inference` (nessuna modifica al codice; `x_0g_trace`/billing catturati intercettando `fetch` dall'esterno, dato che `CoachCompletion` non li espone).
+
+- **JSON valido al primo tentativo** (`attempts=1`, nessun retry necessario).
+- Modello: `glm-5.2` (via `router`), latenza totale **19465 ms**.
+- Token: `prompt_tokens=483`, `completion_tokens=1274` (di cui `reasoning_tokens=789`), `total_tokens=1757`. `finish_reason: "stop"` (non troncato).
+- `x_0g_trace`: `provider=0x7DCFe6AEa70350C2090041524c9B4A9262DCe87D`, `request_id=13eed4ff-2b82-4418-b241-392708839536`, `billing={input_cost:"2516430000000000", output_cost:"22154860000000000", total_cost:"24671290000000000"}` (wei-like unit, `total_cost` ≈ 0.02467129 in quella unità).
+- **Nessun follow-up richiesto per `max_tokens`**: `routerComplete` non invia `max_tokens` e, su questo prompt reale (report completo con confronto storico), il budget di default del router è stato sufficiente — `finish_reason=stop`, contenuto completo ricevuto, JSON estratto e validato al primo colpo. Resta un rischio residuo teorico su prompt molto più lunghi/complessi (non osservato in questa run), ma non è un blocco reale osservato.
+
+### Stato finale aggiornato
+
+- Part A (deploy + sanity on-chain): **completo**, tutte le asserzioni passate.
+- Part B (storage round trip reale): **bloccato sulla finalità di rete** dopo ~24 minuti di attesa reale — non un bug del nostro codice, comportamento genuino della rete Galileo/SDK osservato e riconfermato con chiamata diretta. Nessun dato inventato.
+- Part C (inferenza reale): **completo**, JSON valido al primo tentativo, tracciabilità di pagamento (`x_0g_trace`) catturata.
