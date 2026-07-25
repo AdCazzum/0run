@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Playfair_Display, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { PageChrome } from "@/components/ui/page-chrome";
 
 // NOTE: brief asks for weights 400 + 300 ("Light"), but Google Fonts does
 // not ship a 300 weight for Playfair Display (static or variable axis
@@ -47,7 +46,6 @@ export default function RootLayout({
       <body
         className={`${playfairDisplay.variable} ${inter.variable} min-h-full flex flex-col font-sans bg-cream text-navy`}
       >
-        <PageChrome />
         <Providers>{children}</Providers>
       </body>
     </html>

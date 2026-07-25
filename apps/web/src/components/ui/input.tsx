@@ -4,7 +4,7 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
   return (
     <input
       {...props}
-      className={`h-12 w-full border-b border-navy bg-transparent px-0 py-2 font-sans text-sm text-navy outline-none transition-colors duration-500 placeholder:font-serif placeholder:italic placeholder:text-ocean focus-visible:border-orange ${className}`}
+      className={`h-12 w-full rounded-xl border border-navy/20 bg-white/50 px-4 font-sans text-sm text-navy shadow-sm outline-none transition-colors duration-300 placeholder:font-serif placeholder:italic placeholder:text-ocean/70 focus-visible:border-orange focus-visible:ring-2 focus-visible:ring-orange/25 ${className}`}
     />
   );
 }

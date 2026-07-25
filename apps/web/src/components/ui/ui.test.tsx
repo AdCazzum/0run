@@ -12,11 +12,11 @@ describe("design system", () => {
     expect(btn.className).toContain("tracking-[0.2em]");
     expect(container.querySelector("[data-slide]")?.className).toContain("bg-orange");
   });
-  it("Input: solo border-b, focus orange", () => {
+  it("Input: box arrotondato con bordo soft, focus orange", () => {
     render(<Input placeholder="il tuo nome" />);
     const input = screen.getByPlaceholderText("il tuo nome");
-    expect(input.className).toContain("border-b");
-    expect(input.className).not.toContain("border-t");
+    expect(input.className).toContain("rounded-xl");
+    expect(input.className).toContain("border-navy/20");
     expect(input.className).toContain("focus-visible:border-orange");
   });
 });
