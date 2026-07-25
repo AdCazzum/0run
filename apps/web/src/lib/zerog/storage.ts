@@ -6,7 +6,42 @@ type Deps = {
   makeData: (bytes: Uint8Array, key: Buffer) => Promise<{ data: unknown; rootHash: string }>;
   doUpload: (data: unknown, key: Buffer) => Promise<readonly [string | null, Error | null]>;
   doDownload: (rootHash: string, key: Buffer) => Promise<Buffer>;
+  // Test-only overrides for the timeout budgets below. Production code never
+  // sets these — real callers get UPLOAD_ATTEMPT_TIMEOUT_MS / DOWNLOAD_TIMEOUT_MS.
+  // Exposed here (rather than as a new exported API) so tests can shrink the
+  // budget without waiting out the real one.
+  uploadTimeoutMs?: number;
+  downloadTimeoutMs?: number;
 };
+
+// The 0G Storage SDK's Indexer.upload() has no internal timeout. Measured
+// against real Galileo testnet: a call hung for 24+ minutes with no
+// resolution, even though the on-chain submission itself went through
+// (nonce advanced by 2, balance debited 0.002476 OG) — the promise just
+// never settled. Bound each attempt so uploadEncrypted's "always return a
+// receipt, never hang" contract actually holds.
+const UPLOAD_ATTEMPT_TIMEOUT_MS = 120_000; // 120s per attempt (3 attempts => bounded worst case)
+
+// The 0G Storage SDK's Indexer.downloadToBlob() can also stall — measured
+// "Log entry is available, but not finalized yet" for 6+ minutes while the
+// indexer REST endpoint kept answering 404 ({"code":101,"message":"File not
+// found"}). The SDK provides no timeout of its own here either.
+const DOWNLOAD_TIMEOUT_MS = 30_000; // 30s per attempt; downloadDecrypted does not retry
+
+// Small local helper: races `promise` against a deadline. No dependency —
+// the SDK gives us nothing to hook into, so this is the only way to bound
+// calls that may simply never settle.
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
 
 function realDeps(): Deps {
   const provider = new ethers.JsonRpcProvider(process.env.ZG_RPC_URL ?? GALILEO.rpcUrl);
@@ -84,10 +119,24 @@ export function _setDepsForTest(d: Deps) { deps = d; }
 
 export async function uploadEncrypted(bytes: Uint8Array, key: Buffer): Promise<StorageReceipt> {
   try {
-    const { data, rootHash } = await getDeps().makeData(bytes, key);
+    const d = getDeps();
+    const { data, rootHash } = await d.makeData(bytes, key);
+    const uploadTimeoutMs = d.uploadTimeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS;
     let lastErr = "";
     for (let attempt = 0; attempt < 3; attempt++) {
-      const [tx, err] = await getDeps().doUpload(data, key);
+      let tx: string | null;
+      let err: Error | null;
+      try {
+        [tx, err] = await withTimeout(d.doUpload(data, key), uploadTimeoutMs, "0G storage upload attempt");
+      } catch (timeoutErr) {
+        // The SDK has no internal timeout, and we've measured cases where
+        // the on-chain submission still landed (nonce advanced, balance
+        // debited) even though this call never returned. Do not let callers
+        // conclude "nothing happened" — the tx may exist despite the timeout.
+        lastErr = `${String(timeoutErr)} — the on-chain submission may still have landed even though this call did not return; check the treasury nonce/balance before retrying`;
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
       if (!err) {
         // SDK default `skipIfFinalized: true`: if this exact encrypted
         // stream is already finalized on the network, Uploader.uploadFile()
@@ -111,7 +160,9 @@ export async function downloadDecrypted(
   rootHash: string, key: Buffer, validate: (buf: Buffer) => boolean,
 ): Promise<{ ok: true; data: Buffer } | { ok: false; error: string }> {
   try {
-    const buf = await getDeps().doDownload(rootHash, key);
+    const d = getDeps();
+    const downloadTimeoutMs = d.downloadTimeoutMs ?? DOWNLOAD_TIMEOUT_MS;
+    const buf = await withTimeout(d.doDownload(rootHash, key), downloadTimeoutMs, "0G storage download");
     if (!validate(buf)) return { ok: false, error: "validation failed (chiave sbagliata o dato corrotto)" };
     return { ok: true, data: buf };
   } catch (e) {

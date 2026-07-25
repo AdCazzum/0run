@@ -27,4 +27,37 @@ describe("storage receipts", () => {
     const r = await downloadDecrypted("0xroot", Buffer.alloc(32), () => false);
     expect(r.ok).toBe(false);
   });
+  it("upload il cui doUpload non risolve mai → ok:false per timeout (mai un hang), senza attendere il budget reale", async () => {
+    vi.useFakeTimers();
+    try {
+      _setDepsForTest({
+        makeData: async () => ({ data: {}, rootHash: "0xroot" }),
+        doUpload: () => new Promise<readonly [string | null, Error | null]>(() => {}), // non risolve mai, come misurato in rete reale
+        doDownload: async () => Buffer.from("x"),
+        uploadTimeoutMs: 10, // budget minuscolo per il test: 3 tentativi * 10ms + backoff (2s+4s+6s) di tempo fittizio
+      });
+      const pending = uploadEncrypted(new Uint8Array([1]), Buffer.alloc(32));
+      // Avanza abbastanza tempo fittizio da coprire i 3 tentativi con timeout + tutti i backoff.
+      await vi.advanceTimersByTimeAsync(20_000);
+      const r = await pending;
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.error).toMatch(/timed out/i);
+        expect(r.error).toMatch(/may still have landed/i);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("download il cui doDownload non risolve mai → ok:false per timeout (mai un hang)", async () => {
+    _setDepsForTest({
+      makeData: async () => ({ data: {}, rootHash: "0xroot" }),
+      doUpload: async () => ["0xtx", null] as const,
+      doDownload: () => new Promise<Buffer>(() => {}), // non risolve mai
+      downloadTimeoutMs: 10,
+    });
+    const r = await downloadDecrypted("0xroot", Buffer.alloc(32), () => true);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/timed out/i);
+  });
 });
