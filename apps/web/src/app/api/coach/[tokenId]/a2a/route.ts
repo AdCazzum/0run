@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { coaches } from "@/db/schema";
-import { verifyConsult, type SignedConsult } from "@/lib/a2a/protocol";
+import { verifyConsult, MAX_SKEW_SEC, type SignedConsult } from "@/lib/a2a/protocol";
 import { resolveCoachEns } from "@/lib/ens/resolve";
 import { loadConsultProfile } from "@/lib/coach/consult-profile";
 import { systemPrompt } from "@/lib/coach/prompts";
@@ -56,6 +56,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
     if (!coach) return NextResponse.json({ error: "coach non trovato" }, { status: 404 });
     if (!coach.ensName) {
       return NextResponse.json({ error: "questo coach non ha ancora un'identità ENS" }, { status: 409 });
+    }
+
+    // Cheap pre-check BEFORE the expensive live ENS resolution of `from`:
+    // reject a stale/replayed or misdirected request on timestamp/recipient
+    // alone, same reasons verifyConsult would give below, so a spammer can't
+    // force a resolveCoachEns RPC round-trip per garbage request. verifyConsult
+    // still runs afterwards as the authoritative check (ts+to+signature together).
+    if (Math.abs(Math.floor(Date.now() / 1000) - msg.ts) > MAX_SKEW_SEC) {
+      return NextResponse.json({ error: "timestamp fuori finestra" }, { status: 401 });
+    }
+    if (msg.to.toLowerCase() !== coach.ensName.toLowerCase()) {
+      return NextResponse.json({ error: "destinatario non corrispondente" }, { status: 401 });
     }
 
     // ENS as the auth registry: who may speak as `from` is whatever the

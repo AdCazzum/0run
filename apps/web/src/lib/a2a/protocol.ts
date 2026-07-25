@@ -23,11 +23,21 @@ export function consultDigest(p: ConsultPayload): string {
   return JSON.stringify({ from: p.from, to: p.to, question: p.question, context: p.context, ts: p.ts, nonce: p.nonce });
 }
 
-/** The deployment's agent-executor key (spec: one key, published as `agent-signer`). Null when unconfigured. */
+/**
+ * The deployment's agent-executor key (spec: one key, published as
+ * `agent-signer`). Null when unconfigured OR malformed — a bad
+ * A2A_SIGNER_PRIVATE_KEY must never turn into an unhandled 500 in the
+ * agent.json route or the mint route's ENS lane, both of which call this
+ * best-effort (`a2aAccount()?.address ?? null`).
+ */
 export function a2aAccount() {
   const pk = process.env.A2A_SIGNER_PRIVATE_KEY;
   if (!pk) return null;
-  return privateKeyToAccount(pk as `0x${string}`);
+  try {
+    return privateKeyToAccount(pk as `0x${string}`);
+  } catch {
+    return null;
+  }
 }
 
 export async function signConsult(p: ConsultPayload, pk: `0x${string}`): Promise<SignedConsult> {
